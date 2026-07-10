@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.cache/
+cache/
+.env
+# layer 3 will keep a logged-in browser profile here — never commit it
+profile/
+
+# runtime state — a live session is a credential
+*.db
+session-cookies.json
+deploy/state/
+deploy/config/
+.DS_Store
