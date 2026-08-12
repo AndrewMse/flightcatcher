@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlightCatcher</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">✈</span>
+    <div>
+      <h1>FlightCatcher</h1>
+      <p class="tagline">Wizz Multipass window watcher</p>
+    </div>
+  </div>
+  <div class="statusstrip" id="statusstrip"></div>
+</header>
+
+<main>
+
+  <section id="approvals-section" class="panel urgent hidden">
+    <h2>Waiting for you</h2>
+    <p class="hint">Prepared up to the confirm button. Nothing is bought until you approve.</p>
+    <div id="approvals"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Watches</h2>
+      <button class="btn" id="toggle-want-form">Add a watch</button>
+    </div>
+
+    <form id="want-form" class="wantform hidden">
+      <div class="grid">
+        <label>Name<input name="name" required placeholder="Home for the weekend"></label>
+        <label>From<input name="origin" required placeholder="Bucharest" autocomplete="off"></label>
+        <label>To<input name="destination" required placeholder="Eindhoven" autocomplete="off"></label>
+        <label>Earliest departure<input type="date" name="date_from" required></label>
+        <label>Latest departure<input type="date" name="date_to" required></label>
+        <label>Max stops<input type="number" name="max_stops" value="1" min="0" max="2"></label>
+        <label>Min layover (min)<input type="number" name="min_layover_min" value="180" min="30" max="2000"></label>
+        <label>Max trip (hours)<input type="number" name="max_trip_hours" value="30" min="1" max="96"></label>
+        <label>Not before (hour)<input type="number" name="after_hour" min="0" max="23" placeholder="any"></label>
+        <label>Not after (hour)<input type="number" name="before_hour" min="0" max="23" placeholder="any"></label>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" name="allow_ground_transfer">
+          Allow changing airports on the ground</label>
+        <label class="check"><input type="checkbox" name="auto_request_booking">
+          Prepare a booking automatically when a seat appears
+          <span class="sub">(still asks you before confirming)</span></label>
+      </div>
+      <div class="formactions">
+        <button class="btn primary" type="submit">Add watch</button>
+        <button class="btn ghost" type="button" id="cancel-want">Cancel</button>
+        <span class="formerror" id="want-error"></span>
+      </div>
+    </form>
+
+    <div id="wants"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Candidates</h2>
+      <div class="filters">
+        <label class="check"><input type="checkbox" id="only-open"> Only bookable now</label>
+      </div>
+    </div>
+    <div id="candidates"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Activity</h2>
+    <div id="activity" class="activity"></div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Schedule feasibility comes from Wizz's public timetable; availability comes from
+     your logged-in session. Estimated arrival times are marked <code>~</code>.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
