@@ -1,0 +1,42 @@
+[Unit]
+Description=FlightCatcher — Wizz Multipass window watcher
+Documentation=https://github.com/AndrewMse/flightcatcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flightcatcher
+Group=flightcatcher
+WorkingDirectory=/opt/flightcatcher
+
+# The Discord token stays out of the config file and out of the unit itself.
+# Create /etc/flightcatcher/env with:
+#   FLIGHTCATCHER_DISCORD_TOKEN=...
+#   FLIGHTCATCHER_DISCORD_CHANNEL=...
+# and chmod 600 it.
+EnvironmentFile=-/etc/flightcatcher/env
+Environment=FLIGHTCATCHER_CONFIG=/etc/flightcatcher/config.toml
+
+ExecStart=/opt/flightcatcher/.venv/bin/flightcatcher serve
+
+Restart=on-failure
+RestartSec=30s
+
+# The browser profile holds a logged-in Wizz Air session. Treat it like a
+# credential: it is the one file here that can spend money.
+StateDirectory=flightcatcher
+StateDirectoryMode=0700
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/flightcatcher
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

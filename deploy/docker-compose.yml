@@ -1,0 +1,19 @@
+services:
+  flightcatcher:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Keep the token in a .env file next to this compose file, not in here.
+      FLIGHTCATCHER_DISCORD_TOKEN: ${FLIGHTCATCHER_DISCORD_TOKEN:-}
+      FLIGHTCATCHER_DISCORD_CHANNEL: ${FLIGHTCATCHER_DISCORD_CHANNEL:-}
+      FLIGHTCATCHER_DB: /state/flightcatcher.db
+    volumes:
+      - ./state:/state
+      - ./config:/config
+    ports:
+      # Bound to localhost: the approve endpoint spends money and the UI has
+      # no authentication of its own. Put a reverse proxy with auth in front
+      # if you want to reach it from outside the host.
+      - "127.0.0.1:8765:8765"
