@@ -1,38 +1,38 @@
 [Unit]
-Description=FlightCatcher — Wizz Multipass window watcher
-Documentation=https://github.com/AndrewMse/flightcatcher
+Description=Hopwatch — Wizz Multipass window watcher
+Documentation=https://github.com/AndrewMse/hopwatch
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=flightcatcher
-Group=flightcatcher
-WorkingDirectory=/opt/flightcatcher
+User=hopwatch
+Group=hopwatch
+WorkingDirectory=/opt/hopwatch
 
 # The Discord token stays out of the config file and out of the unit itself.
-# Create /etc/flightcatcher/env with:
-#   FLIGHTCATCHER_DISCORD_TOKEN=...
-#   FLIGHTCATCHER_DISCORD_CHANNEL=...
+# Create /etc/hopwatch/env with:
+#   HOPWATCH_DISCORD_TOKEN=...
+#   HOPWATCH_DISCORD_CHANNEL=...
 # and chmod 600 it.
-EnvironmentFile=-/etc/flightcatcher/env
-Environment=FLIGHTCATCHER_CONFIG=/etc/flightcatcher/config.toml
+EnvironmentFile=-/etc/hopwatch/env
+Environment=HOPWATCH_CONFIG=/etc/hopwatch/config.toml
 
-ExecStart=/opt/flightcatcher/.venv/bin/flightcatcher serve
+ExecStart=/opt/hopwatch/.venv/bin/hopwatch serve
 
 Restart=on-failure
 RestartSec=30s
 
 # The browser profile holds a logged-in Wizz Air session. Treat it like a
 # credential: it is the one file here that can spend money.
-StateDirectory=flightcatcher
+StateDirectory=hopwatch
 StateDirectoryMode=0700
 
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/flightcatcher
+ReadWritePaths=/var/lib/hopwatch
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true

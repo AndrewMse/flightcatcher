@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
-from flightcatcher import config
-from flightcatcher.models import Departure, Itinerary
-from flightcatcher.network import RouteNetwork
-from flightcatcher.search import (
+from hopwatch import config
+from hopwatch.models import Departure, Itinerary
+from hopwatch.network import RouteNetwork
+from hopwatch.search import (
     SearchOptions,
     _connection_between,
     _to_departures,
     booking_window,
     build_itineraries,
 )
-from flightcatcher.timezones import tz_for
+from hopwatch.timezones import tz_for
 
 UTC = timezone.utc
 
@@ -89,8 +89,8 @@ def test_ground_transfer_is_flagged_and_gated(net: RouteNetwork) -> None:
 
 
 def test_ground_transfer_needs_a_bigger_buffer(net: RouteNetwork) -> None:
-    from flightcatcher.search import _layover_ok
-    from flightcatcher.models import Connection
+    from hopwatch.search import _layover_ok
+    from hopwatch.models import Connection
 
     tight = Connection(layover_min=200, ground_transfer=True, from_station="WAW",
                        to_station="WMI")

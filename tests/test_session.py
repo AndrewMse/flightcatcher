@@ -11,8 +11,8 @@ import json
 
 import pytest
 
-from flightcatcher.browser import BrowserSession
-from flightcatcher.settings import BrowserSettings
+from hopwatch.browser import BrowserSession
+from hopwatch.settings import BrowserSettings
 
 COOKIES = [
     {"name": "session", "value": "abc", "domain": ".wizzair.com", "path": "/"},

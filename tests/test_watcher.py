@@ -7,13 +7,13 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from flightcatcher.models import BookingWindow, Departure, Itinerary
-from flightcatcher.network import RouteNetwork
-from flightcatcher.search import SearchResult
-from flightcatcher.settings import PassengerSettings, Settings, WatcherSettings
-from flightcatcher.store import BOOKED, PENDING_APPROVAL, Store
-from flightcatcher.timezones import tz_for
-from flightcatcher.watcher import Watcher, legs_payload, signature_for
+from hopwatch.models import BookingWindow, Departure, Itinerary
+from hopwatch.network import RouteNetwork
+from hopwatch.search import SearchResult
+from hopwatch.settings import PassengerSettings, Settings, WatcherSettings
+from hopwatch.store import BOOKED, PENDING_APPROVAL, Store
+from hopwatch.timezones import tz_for
+from hopwatch.watcher import Watcher, legs_payload, signature_for
 
 from .conftest import build_map
 
@@ -133,7 +133,7 @@ async def test_search_want_persists_candidates(net, store, watcher, monkeypatch)
     found = itinerary_for(net, now)
 
     monkeypatch.setattr(
-        "flightcatcher.watcher.search",
+        "hopwatch.watcher.search",
         lambda *a, **k: SearchResult(itineraries=[found], paths_considered=1),
     )
 
@@ -155,7 +155,7 @@ async def test_closed_itineraries_are_not_persisted(net, store, watcher, monkeyp
     stale.window.status = "closed"
 
     monkeypatch.setattr(
-        "flightcatcher.watcher.search", lambda *a, **k: SearchResult(itineraries=[stale])
+        "hopwatch.watcher.search", lambda *a, **k: SearchResult(itineraries=[stale])
     )
     assert await watcher._search_want(store.list_wants()[0], net) == 0
     assert store.list_candidates() == []
@@ -164,7 +164,7 @@ async def test_closed_itineraries_are_not_persisted(net, store, watcher, monkeyp
 async def test_incomplete_search_is_logged_loudly(net, store, watcher, monkeypatch) -> None:
     add_want(store)
     monkeypatch.setattr(
-        "flightcatcher.watcher.search",
+        "hopwatch.watcher.search",
         lambda *a, **k: SearchResult(itineraries=[], failed_routes=[("OTP", "WAW")]),
     )
     await watcher._search_want(store.list_wants()[0], net)

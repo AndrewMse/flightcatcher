@@ -1,4 +1,4 @@
-# FlightCatcher
+# Hopwatch
 
 Finds and books Wizz Air itineraries on **Wizz Multipass** — including
 self-transfer routings the airline will never sell you as one ticket, like
@@ -31,15 +31,15 @@ python3.12 -m venv .venv && .venv/bin/pip install -e '.[service,dev]'
 Try it without any of the booking machinery first:
 
 ```bash
-.venv/bin/flightcatcher search Bucharest Eindhoven --from today --to +6d
+.venv/bin/hopwatch search Bucharest Eindhoven --from today --to +6d
 ```
 
 Then set up the service:
 
 ```bash
-.venv/bin/flightcatcher init-config
-.venv/bin/flightcatcher login
-.venv/bin/flightcatcher serve
+.venv/bin/hopwatch init-config
+.venv/bin/hopwatch login
+.venv/bin/hopwatch serve
 ```
 
 `login` opens a real browser and waits while **you** sign in. Nothing in this
@@ -128,7 +128,7 @@ an informed guess matched broadly across fare fields. Every check stores its raw
 fare JSON, so the first real check tells you the truth:
 
 ```bash
-.venv/bin/flightcatcher probe --origin OTP --destination EIN --date 2026-09-20
+.venv/bin/hopwatch probe --origin OTP --destination EIN --date 2026-09-20
 ```
 
 That dumps the live API responses, selector hit counts, page HTML and a
@@ -141,7 +141,7 @@ a booking for you to reject, a false negative silently loses the window.
 
 ## Staying logged in
 
-The bot never stores or types your Wizz password. `flightcatcher login` opens a
+The bot never stores or types your Wizz password. `hopwatch login` opens a
 browser, you sign in yourself, and the session is reused after that. **Tick
 "Remember me" when you log in** — without it Wizz issues a short-lived session
 cookie and you'll be signing in constantly.
@@ -169,8 +169,8 @@ a tmpfs or inside a container without a volume loses everything on exit.
 worth using — Chromium's system libraries are the fiddly part on a Pi.
 
 ```bash
-sudo cp deploy/flightcatcher.service /etc/systemd/system/
-sudo systemctl enable --now flightcatcher
+sudo cp deploy/hopwatch.service /etc/systemd/system/
+sudo systemctl enable --now hopwatch
 ```
 
 Two things to be careful with:
@@ -181,7 +181,7 @@ Two things to be careful with:
   endpoint spends money — put a reverse proxy with auth in front before exposing
   it anywhere.
 
-Keep the Discord token in the environment (`FLIGHTCATCHER_DISCORD_TOKEN`), not
+Keep the Discord token in the environment (`HOPWATCH_DISCORD_TOKEN`), not
 in the config file.
 
 ## CLI

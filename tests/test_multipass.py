@@ -12,14 +12,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from flightcatcher.multipass import (
+from hopwatch.multipass import (
     CheckBudget,
     _fare_is_multipass,
     next_check_time,
     parse_leg,
 )
-from flightcatcher.settings import WatcherSettings
-from flightcatcher.store import AVAILABLE, SOLD_OUT
+from hopwatch.settings import WatcherSettings
+from hopwatch.store import AVAILABLE, SOLD_OUT
 
 UTC = timezone.utc
 

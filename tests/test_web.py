@@ -11,10 +11,10 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from flightcatcher.network import RouteNetwork
-from flightcatcher.settings import Settings
-from flightcatcher.store import PENDING_APPROVAL, Store
-from flightcatcher.web.app import create_app
+from hopwatch.network import RouteNetwork
+from hopwatch.settings import Settings
+from hopwatch.store import PENDING_APPROVAL, Store
+from hopwatch.web.app import create_app
 
 from .conftest import build_map
 
@@ -218,4 +218,4 @@ def test_events_feed(client) -> None:
 def test_frontend_is_served(client) -> None:
     page = client.get("/")
     assert page.status_code == 200
-    assert "FlightCatcher" in page.text
+    assert "Hopwatch" in page.text

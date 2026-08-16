@@ -139,7 +139,7 @@ class BookingFlow:
         except Exception as exc:
             raise StepNotFound(
                 f"could not {what} (selector {selector!r}): {exc}. "
-                "Run 'flightcatcher probe' and update selectors.py."
+                "Run 'hopwatch probe' and update selectors.py."
             ) from exc
 
     @staticmethod
@@ -224,7 +224,7 @@ class BookingFlow:
             if not await confirm.count():
                 raise StepNotFound(
                     "no confirm button on the final page — flow may have changed. "
-                    "Run 'flightcatcher probe' and update selectors.py."
+                    "Run 'hopwatch probe' and update selectors.py."
                 )
 
             try:

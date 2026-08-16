@@ -1,8 +1,8 @@
-"""FlightCatcher — Wizz Air Multipass itinerary finder."""
+"""Hopwatch — Wizz Air Multipass itinerary finder."""
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 from .client import WizzClient, WizzError
 from .models import Airport, BookingWindow, Connection, Departure, Edge, Itinerary

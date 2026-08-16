@@ -16,14 +16,14 @@ spends your money.
 ## 2. Create the application
 
 Go to <https://discord.com/developers/applications> → **New Application**. Name
-it `FlightCatcher`.
+it `Hopwatch`.
 
 In the left sidebar, open **Bot**:
 
 - Click **Reset Token**, then **Copy**. This is the only time it is shown. If
   you lose it, reset it again — it is a password for the bot.
 - **Public Bot**: turn this **off**. You don't want anyone else adding it.
-- **Privileged Gateway Intents**: leave all three **off**. FlightCatcher uses
+- **Privileged Gateway Intents**: leave all three **off**. Hopwatch uses
   `Intents.default()` and needs none of them. This is the usual thing people
   turn on unnecessarily.
 
@@ -59,7 +59,7 @@ Enable **Settings → Advanced → Developer Mode** in the Discord app first.
 - **Server ID** (optional) — right-click the server icon → **Copy Server ID**
 
 Your user ID is the important one: **only IDs on the approver list can press
-Approve.** An empty list means nobody can, and FlightCatcher will say so at
+Approve.** An empty list means nobody can, and Hopwatch will say so at
 startup. It fails closed on purpose — anyone who can see the channel can see
 the button.
 
@@ -68,13 +68,13 @@ the button.
 The token goes in the environment, not the config file:
 
 ```bash
-export FLIGHTCATCHER_DISCORD_TOKEN='paste-the-token'
+export HOPWATCH_DISCORD_TOKEN='paste-the-token'
 ```
 
-For a systemd deployment, put it in `/etc/flightcatcher/env` (chmod 600) — the
+For a systemd deployment, put it in `/etc/hopwatch/env` (chmod 600) — the
 unit file already reads it.
 
-Then in `~/.config/flightcatcher/config.toml`:
+Then in `~/.config/hopwatch/config.toml`:
 
 ```toml
 [discord]
@@ -92,10 +92,10 @@ immediately.
 ## 6. Check it
 
 ```bash
-flightcatcher serve
+hopwatch serve
 ```
 
-You should see `Connected as FlightCatcher#1234` in the log and in the UI's
+You should see `Connected as Hopwatch#1234` in the log and in the UI's
 activity feed. In Discord, type `/` in your channel — `/status`, `/wants` and
 `/upcoming` should be listed. `/status` is the quickest end-to-end test: it
 reports whether the Wizz session is alive and how much check budget is left.

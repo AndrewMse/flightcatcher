@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from flightcatcher import config
-from flightcatcher.client import WizzError
-from flightcatcher.network import RouteNetwork
-from flightcatcher.search import fetch_departures
+from hopwatch import config
+from hopwatch.client import WizzError
+from hopwatch.network import RouteNetwork
+from hopwatch.search import fetch_departures
 
 
 class FakeClient:

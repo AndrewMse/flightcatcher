@@ -8,7 +8,7 @@ The strategy everywhere else is to lean on intercepted API responses rather
 than the DOM, precisely because these selectors are the fragile part. They are
 used only where a click genuinely has to happen.
 
-Run ``flightcatcher probe`` to dump what the live site actually serves, then
+Run ``hopwatch probe`` to dump what the live site actually serves, then
 correct anything here that has drifted.
 """
 

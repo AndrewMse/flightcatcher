@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flightcatcher.settings import EXAMPLE_CONFIG, Settings
+from hopwatch.settings import EXAMPLE_CONFIG, Settings
 
 
 def write_config(tmp_path, body: str):
@@ -58,8 +58,8 @@ def test_missing_config_falls_back_to_defaults(tmp_path) -> None:
 
 
 def test_env_overrides_the_file(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("FLIGHTCATCHER_DISCORD_TOKEN", "from-env")
-    monkeypatch.setenv("FLIGHTCATCHER_DISCORD_CHANNEL", "999")
+    monkeypatch.setenv("HOPWATCH_DISCORD_TOKEN", "from-env")
+    monkeypatch.setenv("HOPWATCH_DISCORD_CHANNEL", "999")
     settings = Settings.load(write_config(tmp_path, '[discord]\nbot_token = "from-file"\n'))
     assert settings.discord.bot_token == "from-env"
     assert settings.discord.channel_id == 999

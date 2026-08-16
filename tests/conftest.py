@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from flightcatcher.network import RouteNetwork
+from hopwatch.network import RouteNetwork
 
 STATIONS = {
     # iata: (name, country_code, country_name, lat, lon, mac)

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from flightcatcher.store import (
+from hopwatch.store import (
     AVAILABLE,
     BOOKED,
     EXPIRED,

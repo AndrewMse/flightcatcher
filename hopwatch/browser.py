@@ -3,7 +3,7 @@
 Layer 3 needs a logged-in browser because Multipass eligibility is an
 account-level fact: no unauthenticated endpoint will ever answer "can *your*
 pass take this seat". The session lives in a persistent profile directory that
-you seed once, by hand, with ``flightcatcher login``.
+you seed once, by hand, with ``hopwatch login``.
 
 Credentials are never handled by this program. The login command opens a real
 browser and waits for *you* to sign in; nothing reads, stores, or types your
@@ -118,7 +118,7 @@ class BrowserSession:
         if not PLAYWRIGHT_AVAILABLE:
             raise BrowserUnavailable(
                 "Playwright is not installed. Run:\n"
-                "  pip install 'flightcatcher[browser]'\n"
+                "  pip install 'hopwatch[browser]'\n"
                 "  playwright install chromium"
             )
         self.settings = settings
@@ -207,7 +207,7 @@ class BrowserSession:
 
             log.warning(
                 "could not classify session state from the page; "
-                "run 'flightcatcher probe --login' to recalibrate selectors"
+                "run 'hopwatch probe --login' to recalibrate selectors"
             )
             return False
         finally:
@@ -217,7 +217,7 @@ class BrowserSession:
     async def require_login(self) -> None:
         if not await self.is_logged_in():
             raise NotLoggedIn(
-                "No usable Wizz Air session. Run 'flightcatcher login' and sign in."
+                "No usable Wizz Air session. Run 'hopwatch login' and sign in."
             )
 
     # --- session durability -------------------------------------------------
@@ -321,7 +321,7 @@ async def interactive_login(settings: BrowserSettings) -> bool:
             print(
                 "Could not confirm a session. If you are definitely signed in, the "
                 "detection markers in selectors.py may be stale — run "
-                "'flightcatcher probe --login' to see what the page serves."
+                "'hopwatch probe --login' to see what the page serves."
             )
         return ok
 

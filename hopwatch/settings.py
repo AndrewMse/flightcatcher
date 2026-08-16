@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CONFIG_PATH = Path(
-    os.environ.get("FLIGHTCATCHER_CONFIG", "~/.config/flightcatcher/config.toml")
+    os.environ.get("HOPWATCH_CONFIG", "~/.config/hopwatch/config.toml")
 ).expanduser()
 
 
@@ -40,20 +40,20 @@ class PassengerSettings:
 
 @dataclass
 class BrowserSettings:
-    profile_dir: Path = Path("~/.local/share/flightcatcher/profile")
+    profile_dir: Path = Path("~/.local/share/hopwatch/profile")
     headless: bool = True
     slow_mo_ms: int = 250  # deliberate pacing; this drives a real airline site
     nav_timeout_ms: int = 45_000
     locale: str = "en-GB"
     timezone_id: str = "Europe/Bucharest"
-    screenshot_dir: Path = Path("~/.local/share/flightcatcher/screenshots")
+    screenshot_dir: Path = Path("~/.local/share/hopwatch/screenshots")
     # Wizz expires idle sessions. The watcher can go many hours between
     # authenticated checks, so without a periodic touch the session is reliably
     # dead at the exact moment a booking window opens. 0 disables.
     keepalive_min: int = 20
     # Cookies are only flushed to the profile on a clean browser close, so a
     # hard kill loses the session. This snapshot is the belt to that braces.
-    cookie_backup: Path = Path("~/.local/share/flightcatcher/session-cookies.json")
+    cookie_backup: Path = Path("~/.local/share/hopwatch/session-cookies.json")
 
 
 @dataclass
@@ -103,7 +103,7 @@ class WebSettings:
 
 @dataclass
 class Settings:
-    database: Path = Path("~/.local/share/flightcatcher/flightcatcher.db")
+    database: Path = Path("~/.local/share/hopwatch/hopwatch.db")
     passenger: PassengerSettings = field(default_factory=PassengerSettings)
     browser: BrowserSettings = field(default_factory=BrowserSettings)
     watcher: WatcherSettings = field(default_factory=WatcherSettings)
@@ -122,14 +122,14 @@ class Settings:
         return settings
 
     def _apply_env(self) -> None:
-        token = os.environ.get("FLIGHTCATCHER_DISCORD_TOKEN")
+        token = os.environ.get("HOPWATCH_DISCORD_TOKEN")
         if token:
             self.discord.bot_token = token
             self.discord.enabled = True
-        channel = os.environ.get("FLIGHTCATCHER_DISCORD_CHANNEL")
+        channel = os.environ.get("HOPWATCH_DISCORD_CHANNEL")
         if channel:
             self.discord.channel_id = int(channel)
-        db = os.environ.get("FLIGHTCATCHER_DB")
+        db = os.environ.get("HOPWATCH_DB")
         if db:
             self.database = Path(db)
 
@@ -185,11 +185,11 @@ def _from_dict(cls: type, data: dict[str, Any]) -> Any:
 
 
 EXAMPLE_CONFIG = """\
-# FlightCatcher configuration.
+# Hopwatch configuration.
 # Keep this file private: chmod 600. It holds passenger identity details.
 # It must never hold payment details — the bot does not enter them.
 
-database = "~/.local/share/flightcatcher/flightcatcher.db"
+database = "~/.local/share/hopwatch/hopwatch.db"
 
 [passenger]
 first_name = ""
@@ -216,7 +216,7 @@ approval_hold_min = 12
 
 [discord]
 enabled = false
-# Prefer the env var FLIGHTCATCHER_DISCORD_TOKEN over putting the token here.
+# Prefer the env var HOPWATCH_DISCORD_TOKEN over putting the token here.
 bot_token = ""
 channel_id = 0
 # Your Discord user ID. The Approve button spends money, so only the people

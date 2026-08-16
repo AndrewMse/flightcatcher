@@ -73,7 +73,7 @@ class AdHocSearch(BaseModel):
 
 
 def create_app(store: Store, settings: Settings, watcher: Any | None = None) -> FastAPI:
-    app = FastAPI(title="FlightCatcher", docs_url="/api/docs")
+    app = FastAPI(title="Hopwatch", docs_url="/api/docs")
     app.state.network = None
     app.state.client = WizzClient()
 

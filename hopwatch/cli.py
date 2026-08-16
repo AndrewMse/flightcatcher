@@ -1,4 +1,4 @@
-"""Command line interface for FlightCatcher layers 1-2."""
+"""Command line interface for Hopwatch layers 1-2."""
 
 from __future__ import annotations
 
@@ -342,7 +342,7 @@ def cmd_init_config(args: argparse.Namespace) -> int:
     path.chmod(0o600)
     print(f"Wrote {path}")
     print("Fill in [passenger] before enabling automatic booking prep.")
-    print("Prefer FLIGHTCATCHER_DISCORD_TOKEN in the environment over the config file.")
+    print("Prefer HOPWATCH_DISCORD_TOKEN in the environment over the config file.")
     return 0
 
 
@@ -462,7 +462,7 @@ def cmd_refresh(args: argparse.Namespace, client: WizzClient) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="flightcatcher",
+        prog="hopwatch",
         description="Find Wizz Air itineraries bookable on Multipass, including self-transfers.",
     )
     parser.add_argument("-v", "--verbose", action="store_true")

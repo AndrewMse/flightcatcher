@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from flightcatcher.network import RouteNetwork, estimate_duration_min, haversine_km
+from hopwatch.network import RouteNetwork, estimate_duration_min, haversine_km
 
 from .conftest import build_map
 

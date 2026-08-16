@@ -1,14 +1,14 @@
 services:
-  flightcatcher:
+  hopwatch:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     restart: unless-stopped
     environment:
       # Keep the token in a .env file next to this compose file, not in here.
-      FLIGHTCATCHER_DISCORD_TOKEN: ${FLIGHTCATCHER_DISCORD_TOKEN:-}
-      FLIGHTCATCHER_DISCORD_CHANNEL: ${FLIGHTCATCHER_DISCORD_CHANNEL:-}
-      FLIGHTCATCHER_DB: /state/flightcatcher.db
+      HOPWATCH_DISCORD_TOKEN: ${HOPWATCH_DISCORD_TOKEN:-}
+      HOPWATCH_DISCORD_CHANNEL: ${HOPWATCH_DISCORD_CHANNEL:-}
+      HOPWATCH_DB: /state/hopwatch.db
     volumes:
       - ./state:/state
       - ./config:/config

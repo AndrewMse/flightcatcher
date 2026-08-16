@@ -164,7 +164,7 @@ class Watcher:
 
                 if not self.session_ok:
                     raise NotLoggedIn(
-                        "Wizz Air session is not usable. Run 'flightcatcher login'."
+                        "Wizz Air session is not usable. Run 'hopwatch login'."
                     )
                 await session.save_cookies()
             return self._browser
@@ -578,7 +578,7 @@ class Watcher:
                 if not warned:
                     warned = True
                     message = (
-                        "Wizz Air session has expired. Run 'flightcatcher login' "
+                        "Wizz Air session has expired. Run 'hopwatch login' "
                         "to sign in again — availability checks and booking are "
                         "paused until you do."
                     )

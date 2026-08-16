@@ -88,7 +88,7 @@ if DISCORD_AVAILABLE:
             # Only the configured approvers may actually spend anything.
             if not self.may_approve(interaction.user.id):
                 await interaction.response.send_message(
-                    "You are not on the approver list for this FlightCatcher.",
+                    "You are not on the approver list for this Hopwatch.",
                     ephemeral=True,
                 )
                 return
@@ -136,7 +136,7 @@ class DiscordNotifier:
     ) -> None:
         if not DISCORD_AVAILABLE:
             raise DiscordUnavailable(
-                "discord.py is not installed. Run: pip install 'flightcatcher[discord]'"
+                "discord.py is not installed. Run: pip install 'hopwatch[discord]'"
             )
         self.settings = settings
         self.store = store
@@ -288,10 +288,10 @@ class DiscordNotifier:
     def _register_commands(self) -> None:
         store = self.store
 
-        @self.tree.command(name="status", description="FlightCatcher watcher status")
+        @self.tree.command(name="status", description="Hopwatch watcher status")
         async def status_cmd(interaction: discord.Interaction) -> None:  # noqa: ANN202
             data = self.status_provider() if self.status_provider else {}
-            embed = discord.Embed(title="FlightCatcher", colour=COLOUR_INFO)
+            embed = discord.Embed(title="Hopwatch", colour=COLOUR_INFO)
             session = data.get("session_ok")
             embed.add_field(
                 name="Wizz session",

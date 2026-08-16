@@ -11,7 +11,7 @@ usefully -- genuine arrival times, which the public timetable endpoint omits.
 
 Every check keeps the raw fare JSON in its result. The exact shape of a
 Multipass fare is the one thing here that cannot be confirmed without a live
-pass, so ``flightcatcher probe`` plus these stored payloads are how the
+pass, so ``hopwatch probe`` plus these stored payloads are how the
 detection below gets calibrated rather than guessed at forever.
 """
 

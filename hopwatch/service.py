@@ -82,7 +82,7 @@ class Service:
 
         self._install_signal_handlers()
 
-        log.info("FlightCatcher running")
+        log.info("Hopwatch running")
         if self.settings.web.enabled:
             log.info(
                 "Web UI at http://%s:%d",

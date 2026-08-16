@@ -1,4 +1,4 @@
-"""Static configuration for FlightCatcher.
+"""Static configuration for Hopwatch.
 
 Layers 1-2 of the bot (route graph + schedule feasibility) only ever touch
 Wizz Air's unauthenticated endpoints. Nothing in here needs credentials.
@@ -37,7 +37,7 @@ REQUEST_TIMEOUT = 30.0
 # --- Cache ------------------------------------------------------------------
 
 CACHE_DIR = Path(
-    os.environ.get("FLIGHTCATCHER_CACHE", Path.home() / ".cache" / "flightcatcher")
+    os.environ.get("HOPWATCH_CACHE", Path.home() / ".cache" / "hopwatch")
 )
 VERSION_TTL = 6 * 3600
 MAP_TTL = 24 * 3600

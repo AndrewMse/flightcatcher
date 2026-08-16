@@ -5,8 +5,8 @@ from datetime import date
 import httpx
 import pytest
 
-from flightcatcher import config
-from flightcatcher.client import WizzClient, WizzError
+from hopwatch import config
+from hopwatch.client import WizzClient, WizzError
 
 
 @pytest.fixture
