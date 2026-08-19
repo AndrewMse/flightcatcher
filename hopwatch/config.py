@@ -6,8 +6,9 @@ Wizz Air's unauthenticated endpoints. Nothing in here needs credentials.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
+
+from .migrate import env
 
 # --- Wizz Air backend -------------------------------------------------------
 
@@ -36,9 +37,7 @@ REQUEST_TIMEOUT = 30.0
 
 # --- Cache ------------------------------------------------------------------
 
-CACHE_DIR = Path(
-    os.environ.get("HOPWATCH_CACHE", Path.home() / ".cache" / "hopwatch")
-)
+CACHE_DIR = Path(env("CACHE") or Path.home() / ".cache" / "hopwatch")
 VERSION_TTL = 6 * 3600
 MAP_TTL = 24 * 3600
 TIMETABLE_TTL = 15 * 60

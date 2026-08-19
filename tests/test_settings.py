@@ -115,3 +115,35 @@ approver_ids = [111]
 def test_incomplete_passenger_is_flagged(tmp_path) -> None:
     settings = Settings.load(write_config(tmp_path, '[passenger]\nfirst_name = "Ada"\n'))
     assert any("passenger" in p for p in settings.describe_problems())
+
+
+def test_load_migrates_legacy_config_file(tmp_path) -> None:
+    legacy = tmp_path / "flightcatcher" / "config.toml"
+    legacy.parent.mkdir()
+    legacy.write_text("[watcher]\nmax_checks_per_hour = 7\n")
+
+    settings = Settings.load(tmp_path / "hopwatch" / "config.toml")
+    assert settings.watcher.max_checks_per_hour == 7
+    assert (tmp_path / "hopwatch" / "config.toml").exists()
+
+
+def test_load_migrates_legacy_database_at_the_default_path(isolated_home) -> None:
+    legacy = isolated_home / ".local/share/flightcatcher/flightcatcher.db"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("db")
+
+    settings = Settings.load(isolated_home / "missing.toml")
+    assert settings.database == isolated_home / ".local/share/hopwatch/hopwatch.db"
+    assert settings.database.read_text() == "db"
+
+
+def test_explicit_legacy_paths_are_left_where_they_are(tmp_path, isolated_home) -> None:
+    db = isolated_home / ".local/share/flightcatcher/flightcatcher.db"
+    db.parent.mkdir(parents=True)
+    db.write_text("db")
+
+    settings = Settings.load(write_config(
+        tmp_path, 'database = "~/.local/share/flightcatcher/flightcatcher.db"\n'
+    ))
+    assert settings.database == db
+    assert db.read_text() == "db"

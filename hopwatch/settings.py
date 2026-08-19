@@ -7,15 +7,17 @@ from the environment by preference so the config file can stay readable.
 
 from __future__ import annotations
 
-import os
 import tomllib
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CONFIG_PATH = Path(
-    os.environ.get("HOPWATCH_CONFIG", "~/.config/hopwatch/config.toml")
-).expanduser()
+from .migrate import env, migrate_path
+
+
+
+def default_config_path() -> Path:
+    return Path(env("CONFIG") or "~/.config/hopwatch/config.toml").expanduser()
 
 
 @dataclass
@@ -112,24 +114,26 @@ class Settings:
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
-        path = path or DEFAULT_CONFIG_PATH
+        path = path or default_config_path()
+        migrate_path(path)
         raw: dict[str, Any] = {}
         if path.exists():
             raw = tomllib.loads(path.read_text())
         settings = _from_dict(cls, raw)
         settings._apply_env()
         settings._expand_paths()
+        settings._migrate_legacy_paths()
         return settings
 
     def _apply_env(self) -> None:
-        token = os.environ.get("HOPWATCH_DISCORD_TOKEN")
+        token = env("DISCORD_TOKEN")
         if token:
             self.discord.bot_token = token
             self.discord.enabled = True
-        channel = os.environ.get("HOPWATCH_DISCORD_CHANNEL")
+        channel = env("DISCORD_CHANNEL")
         if channel:
             self.discord.channel_id = int(channel)
-        db = os.environ.get("HOPWATCH_DB")
+        db = env("DB")
         if db:
             self.database = Path(db)
 
@@ -138,6 +142,13 @@ class Settings:
         self.browser.profile_dir = Path(self.browser.profile_dir).expanduser()
         self.browser.screenshot_dir = Path(self.browser.screenshot_dir).expanduser()
         self.browser.cookie_backup = Path(self.browser.cookie_backup).expanduser()
+
+    def _migrate_legacy_paths(self) -> None:
+        """Pick up FlightCatcher-era state before anything opens these paths."""
+        migrate_path(self.database, companions=("-wal", "-shm"))
+        migrate_path(self.browser.profile_dir)
+        migrate_path(self.browser.screenshot_dir)
+        migrate_path(self.browser.cookie_backup)
 
     def describe_problems(self) -> list[str]:
         """Configuration gaps that will bite at runtime, worth saying early."""

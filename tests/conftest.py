@@ -11,6 +11,21 @@ import pytest
 
 from hopwatch.network import RouteNetwork
 
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path_factory, monkeypatch):
+    """Keep every test away from the real ~/.config and ~/.local/share.
+
+    Settings.load migrates FlightCatcher-era files it finds next to the
+    default paths. Pointed at a real home directory, a test run would move
+    the developer's own database and browser profile.
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    for name in ("HOPWATCH_CONFIG", "HOPWATCH_DB", "FLIGHTCATCHER_CONFIG", "FLIGHTCATCHER_DB"):
+        monkeypatch.delenv(name, raising=False)
+    return home
+
 STATIONS = {
     # iata: (name, country_code, country_name, lat, lon, mac)
     "OTP": ("Bucharest Otopeni\r\n", "RO", "Romania", 44.5711, 26.0850, "BUH"),

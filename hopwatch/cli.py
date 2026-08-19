@@ -331,9 +331,9 @@ def cmd_search(args: argparse.Namespace, client: WizzClient) -> int:
 
 
 def cmd_init_config(args: argparse.Namespace) -> int:
-    from .settings import DEFAULT_CONFIG_PATH, EXAMPLE_CONFIG
+    from .settings import EXAMPLE_CONFIG, default_config_path
 
-    path = Path(args.path).expanduser() if args.path else DEFAULT_CONFIG_PATH
+    path = Path(args.path).expanduser() if args.path else default_config_path()
     if path.exists() and not args.force:
         print(f"{path} already exists (use --force to overwrite)", file=sys.stderr)
         return 1
