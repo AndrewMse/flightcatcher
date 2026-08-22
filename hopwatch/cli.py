@@ -413,14 +413,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     """Read-only peek at the database, without starting the service."""
     from .settings import Settings
-    from .store import PENDING_APPROVAL, Store
+    from .store import PENDING_APPROVAL, SqliteStore
 
     settings = Settings.load(Path(args.config).expanduser() if args.config else None)
     if not settings.database.exists():
         print(f"No database at {settings.database} — nothing has run yet.")
         return 0
 
-    store = Store(settings.database)
+    store = SqliteStore(settings.database)
     try:
         wants = store.list_wants()
         candidates = store.list_candidates(status="watching", limit=500)

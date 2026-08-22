@@ -11,7 +11,7 @@ from hopwatch.models import BookingWindow, Departure, Itinerary
 from hopwatch.network import RouteNetwork
 from hopwatch.search import SearchResult
 from hopwatch.settings import PassengerSettings, Settings, WatcherSettings
-from hopwatch.store import BOOKED, PENDING_APPROVAL, Store
+from hopwatch.store import BOOKED, PENDING_APPROVAL, SqliteStore, Store
 from hopwatch.timezones import tz_for
 from hopwatch.watcher import Watcher, legs_payload, signature_for
 
@@ -55,7 +55,7 @@ def net() -> RouteNetwork:
 
 @pytest.fixture
 def store(tmp_path) -> Store:
-    s = Store(tmp_path / "watcher.db")
+    s = SqliteStore(tmp_path / "watcher.db")
     yield s
     s.close()
 

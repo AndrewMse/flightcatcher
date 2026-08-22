@@ -12,6 +12,7 @@ from hopwatch.store import (
     PENDING_APPROVAL,
     SOLD_OUT,
     WATCHING,
+    SqliteStore,
     Store,
 )
 
@@ -19,8 +20,8 @@ UTC = timezone.utc
 
 
 @pytest.fixture
-def store(tmp_path) -> Store:
-    s = Store(tmp_path / "test.db")
+def store(tmp_path) -> SqliteStore:
+    s = SqliteStore(tmp_path / "test.db")
     yield s
     s.close()
 

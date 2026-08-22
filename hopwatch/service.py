@@ -18,7 +18,7 @@ from typing import Any
 
 from .notify import CompositeNotifier, Notifier, StoreNotifier
 from .settings import Settings
-from .store import Store
+from .store import SqliteStore
 from .watcher import Watcher
 
 log = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 class Service:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.store = Store(settings.database)
+        self.store = SqliteStore(settings.database)
         self.watcher: Watcher | None = None
         self.discord: Any | None = None
         self._web_server: Any | None = None

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from hopwatch.network import RouteNetwork
 from hopwatch.settings import Settings
-from hopwatch.store import PENDING_APPROVAL, Store
+from hopwatch.store import PENDING_APPROVAL, SqliteStore, Store
 from hopwatch.web.app import create_app
 
 from .conftest import build_map
@@ -42,7 +42,7 @@ class FakeWatcher:
 
 @pytest.fixture
 def client(tmp_path):
-    store = Store(tmp_path / "web.db")
+    store = SqliteStore(tmp_path / "web.db")
     settings = Settings()
     watcher = FakeWatcher(store)
     app = create_app(store, settings, watcher)
