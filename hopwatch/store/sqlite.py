@@ -8,6 +8,9 @@ while a booking window is open -- loses nothing. Five tables:
 * ``checks``     results of authenticated Multipass availability checks
 * ``bookings``   booking requests and their approval state
 * ``events``     an activity feed for the UI
+* ``jobs``       queued search jobs, keyed by their idempotency key
+* ``search_runs`` what each sweep of a want cost and found
+* ``heartbeats`` last sign of life from the booker and each worker
 """
 
 from __future__ import annotations
@@ -15,15 +18,20 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from .records import (
     BOOKED,
     EXPIRED,
     HOLD_EXPIRED,
+    JOB_QUEUED,
+    JOB_RETRYING,
+    JOB_RUNNING,
     OPEN_BOOKING_STATES,
+    RUN_RUNNING,
     PENDING_APPROVAL,
     PREPARING,
     UNKNOWN,
@@ -31,7 +39,10 @@ from .records import (
     WATCHING,
     Booking,
     Candidate,
+    Job,
+    SearchRun,
     Want,
+    _dt,
     _now,
 )
 
@@ -118,6 +129,46 @@ CREATE TABLE IF NOT EXISTS events (
     data_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    key          TEXT PRIMARY KEY,
+    kind         TEXT NOT NULL,
+    want_id      INTEGER NOT NULL,
+    status       TEXT NOT NULL,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    worker       TEXT,
+    lease_until  TEXT,
+    last_error   TEXT,
+    result_json  TEXT NOT NULL DEFAULT '{}',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    finished_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_finished ON jobs(finished_at);
+
+CREATE TABLE IF NOT EXISTS search_runs (
+    id                 TEXT PRIMARY KEY,
+    job_key            TEXT,
+    want_id            INTEGER NOT NULL,
+    started_at         TEXT NOT NULL,
+    finished_at        TEXT,
+    duration_ms        INTEGER,
+    status             TEXT NOT NULL,
+    paths_considered   INTEGER NOT NULL DEFAULT 0,
+    routes_queried     INTEGER NOT NULL DEFAULT 0,
+    upstream_calls     INTEGER NOT NULL DEFAULT 0,
+    cache_hits         INTEGER NOT NULL DEFAULT 0,
+    itineraries        INTEGER NOT NULL DEFAULT 0,
+    new_candidates     INTEGER NOT NULL DEFAULT 0,
+    failed_routes_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_runs_started ON search_runs(started_at DESC);
+
+CREATE TABLE IF NOT EXISTS heartbeats (
+    component TEXT PRIMARY KEY,
+    ts        TEXT NOT NULL
+);
 """
 
 
@@ -429,3 +480,158 @@ class SqliteStore:
     def prune_events(self, keep_days: int = 30) -> int:
         cutoff = (datetime.now(UTC) - timedelta(days=keep_days)).isoformat()
         return self._write("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
+
+    # --- jobs ---------------------------------------------------------------
+
+    def create_job(self, key: str, kind: str, want_id: int) -> bool:
+        """Record a job unless its idempotency key already exists."""
+        now = _now()
+        cur = self._write(
+            "INSERT INTO jobs (key, kind, want_id, status, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(key) DO NOTHING",
+            (key, kind, want_id, JOB_QUEUED, now, now),
+        )
+        return cur.rowcount == 1
+
+    def get_job(self, key: str) -> Job | None:
+        rows = self._read("SELECT * FROM jobs WHERE key = ?", (key,))
+        return Job.from_row(rows[0]) if rows else None
+
+    def claim_job(
+        self, key: str, worker: str, lease_s: float, now: datetime | None = None
+    ) -> Job | None:
+        """Take the job for ``worker``, or None if someone holds a live lease.
+
+        A running job whose lease has lapsed belongs to a worker that died, so
+        it can be taken over; that is how a crash turns into a retry.
+        """
+        now = now or datetime.now(UTC)
+        stamp = now.isoformat()
+        cur = self._write(
+            "UPDATE jobs SET status = ?, worker = ?, lease_until = ?, "
+            "attempts = attempts + 1, updated_at = ? "
+            "WHERE key = ? AND (status IN (?, ?) OR (status = ? AND lease_until < ?))",
+            (
+                JOB_RUNNING, worker, (now + timedelta(seconds=lease_s)).isoformat(),
+                stamp, key, JOB_QUEUED, JOB_RETRYING, JOB_RUNNING, stamp,
+            ),
+        )
+        return self.get_job(key) if cur.rowcount == 1 else None
+
+    def finish_job(
+        self,
+        key: str,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        now = _now()
+        self._write(
+            "UPDATE jobs SET status = ?, result_json = ?, last_error = COALESCE(?, last_error), "
+            "lease_until = NULL, updated_at = ?, finished_at = ? WHERE key = ?",
+            (status, json.dumps(result or {}), error, now, now, key),
+        )
+
+    def release_job(self, key: str, error: str) -> None:
+        """Hand a job back for a later attempt after a transient failure."""
+        self._write(
+            "UPDATE jobs SET status = ?, last_error = ?, worker = NULL, lease_until = NULL, "
+            "updated_at = ? WHERE key = ?",
+            (JOB_RETRYING, error, _now(), key),
+        )
+
+    def list_jobs(self, status: str | None = None, limit: int = 100) -> list[Job]:
+        sql = "SELECT * FROM jobs"
+        params: list[Any] = []
+        if status is not None:
+            sql += " WHERE status = ?"
+            params.append(status)
+        sql += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
+        params.append(limit)
+        return [Job.from_row(r) for r in self._read(sql, params)]
+
+    def stale_jobs(
+        self,
+        older_than: datetime,
+        statuses: Sequence[str] = (JOB_QUEUED, JOB_RETRYING),
+        limit: int = 100,
+    ) -> list[Job]:
+        """Jobs waiting in ``statuses`` that nobody has touched since ``older_than``."""
+        statuses = list(statuses)
+        rows = self._read(
+            f"SELECT * FROM jobs WHERE status IN ({', '.join('?' for _ in statuses)}) "
+            "AND updated_at < ? ORDER BY updated_at LIMIT ?",
+            (*statuses, older_than.isoformat(), limit),
+        )
+        return [Job.from_row(r) for r in rows]
+
+    def job_outcomes_since(self, since: datetime) -> dict[str, int]:
+        rows = self._read(
+            "SELECT status, COUNT(*) AS n FROM jobs WHERE finished_at >= ? GROUP BY status",
+            (since.isoformat(),),
+        )
+        return {r["status"]: int(r["n"]) for r in rows}
+
+    # --- search runs --------------------------------------------------------
+
+    def start_search_run(self, want_id: int, job_key: str | None) -> str:
+        run_id = uuid.uuid4().hex
+        self._write(
+            "INSERT INTO search_runs (id, job_key, want_id, started_at, status) "
+            "VALUES (?,?,?,?,?)",
+            (run_id, job_key, want_id, _now(), RUN_RUNNING),
+        )
+        return run_id
+
+    def finish_search_run(
+        self,
+        run_id: str,
+        want_id: int,
+        status: str,
+        *,
+        paths_considered: int = 0,
+        routes_queried: int = 0,
+        upstream_calls: int = 0,
+        cache_hits: int = 0,
+        itineraries: int = 0,
+        new_candidates: int = 0,
+        failed_routes: Sequence[str] = (),
+    ) -> None:
+        rows = self._read("SELECT started_at FROM search_runs WHERE id = ?", (run_id,))
+        if not rows:
+            return
+        finished = datetime.now(UTC)
+        duration_ms = int((finished - _dt(rows[0]["started_at"])).total_seconds() * 1000)
+        self._write(
+            "UPDATE search_runs SET finished_at = ?, duration_ms = ?, status = ?, "
+            "paths_considered = ?, routes_queried = ?, upstream_calls = ?, cache_hits = ?, "
+            "itineraries = ?, new_candidates = ?, failed_routes_json = ? WHERE id = ?",
+            (
+                finished.isoformat(), duration_ms, status, paths_considered,
+                routes_queried, upstream_calls, cache_hits, itineraries,
+                new_candidates, json.dumps(list(failed_routes)), run_id,
+            ),
+        )
+
+    def list_search_runs(self, want_id: int | None = None, limit: int = 50) -> list[SearchRun]:
+        sql = "SELECT * FROM search_runs"
+        params: list[Any] = []
+        if want_id is not None:
+            sql += " WHERE want_id = ?"
+            params.append(want_id)
+        sql += " ORDER BY started_at DESC, rowid DESC LIMIT ?"
+        params.append(limit)
+        return [SearchRun.from_row(r) for r in self._read(sql, params)]
+
+    # --- heartbeats ---------------------------------------------------------
+
+    def beat(self, component: str, now: datetime | None = None) -> None:
+        stamp = (now or datetime.now(UTC)).isoformat()
+        self._write(
+            "INSERT INTO heartbeats (component, ts) VALUES (?, ?) "
+            "ON CONFLICT(component) DO UPDATE SET ts = excluded.ts",
+            (component, stamp),
+        )
+
+    def heartbeats(self) -> dict[str, datetime]:
+        return {r["component"]: _dt(r["ts"]) for r in self._read("SELECT * FROM heartbeats")}

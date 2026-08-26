@@ -242,3 +242,126 @@ class Booking:
             "confirmation": self.confirmation,
             "error": self.error,
         }
+
+
+# Job lifecycle (layer-2 search jobs on the queue)
+JOB_QUEUED = "queued"
+JOB_RUNNING = "running"
+JOB_DONE = "done"
+JOB_FAILED = "failed"  # permanent: retrying cannot help
+JOB_RETRYING = "retrying"
+JOB_DEAD = "dead"  # gave up after max_receives; the message is dead-lettered
+
+JOB_FINISHED_STATES = (JOB_DONE, JOB_FAILED, JOB_DEAD)
+
+# Search run outcome
+RUN_RUNNING = "running"
+RUN_OK = "ok"
+RUN_INCOMPLETE = "incomplete"  # some legs could not be checked
+RUN_ERROR = "error"
+
+
+@dataclass
+class Job:
+    key: str
+    kind: str
+    want_id: int
+    status: str
+    attempts: int
+    worker: str | None
+    lease_until: datetime | None
+    last_error: str | None
+    result: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None = None
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> Job:
+        return cls(
+            key=row["key"],
+            kind=row["kind"],
+            want_id=int(row["want_id"]),
+            status=row["status"],
+            attempts=int(row["attempts"]),
+            worker=row["worker"],
+            lease_until=_dt(row["lease_until"]),
+            last_error=row["last_error"],
+            result=json.loads(row["result_json"] or "{}"),
+            created_at=_dt(row["created_at"]),
+            updated_at=_dt(row["updated_at"]),
+            finished_at=_dt(row["finished_at"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "kind": self.kind,
+            "want_id": self.want_id,
+            "status": self.status,
+            "attempts": self.attempts,
+            "worker": self.worker,
+            "lease_until": self.lease_until.isoformat() if self.lease_until else None,
+            "last_error": self.last_error,
+            "result": self.result,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+        }
+
+
+@dataclass
+class SearchRun:
+    """One attempt at sweeping one want: what it cost and what it found."""
+
+    id: str
+    job_key: str | None
+    want_id: int
+    started_at: datetime
+    finished_at: datetime | None
+    duration_ms: int | None
+    status: str
+    paths_considered: int = 0
+    routes_queried: int = 0
+    upstream_calls: int = 0
+    cache_hits: int = 0
+    itineraries: int = 0
+    new_candidates: int = 0
+    failed_routes: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> SearchRun:
+        return cls(
+            id=row["id"],
+            job_key=row["job_key"],
+            want_id=int(row["want_id"]),
+            started_at=_dt(row["started_at"]),
+            finished_at=_dt(row["finished_at"]),
+            duration_ms=None if row["duration_ms"] is None else int(row["duration_ms"]),
+            status=row["status"],
+            paths_considered=int(row["paths_considered"]),
+            routes_queried=int(row["routes_queried"]),
+            upstream_calls=int(row["upstream_calls"]),
+            cache_hits=int(row["cache_hits"]),
+            itineraries=int(row["itineraries"]),
+            new_candidates=int(row["new_candidates"]),
+            failed_routes=json.loads(row["failed_routes_json"] or "[]"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "job_key": self.job_key,
+            "want_id": self.want_id,
+            "started_at": self.started_at.isoformat(),
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "duration_ms": self.duration_ms,
+            "status": self.status,
+            "paths_considered": self.paths_considered,
+            "routes_queried": self.routes_queried,
+            "upstream_calls": self.upstream_calls,
+            "cache_hits": self.cache_hits,
+            "itineraries": self.itineraries,
+            "new_candidates": self.new_candidates,
+            "failed_routes": self.failed_routes,
+        }
