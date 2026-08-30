@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import pytest
 
+from hopwatch.jobs.sqlite_queue import SqliteJobQueue
 from hopwatch.store import SqliteStore
 
 STORE_BACKENDS = ["sqlite"]
+QUEUE_BACKENDS = ["sqlite"]
 
 
 @pytest.fixture(params=STORE_BACKENDS)
@@ -34,3 +36,25 @@ def make_want(store, **overrides) -> int:
     }
     fields.update(overrides)
     return store.add_want(**fields)
+
+
+@pytest.fixture(params=QUEUE_BACKENDS)
+def make_queue(request, tmp_path):
+    """Build a queue with the given visibility timeout and receive limit."""
+    created = []
+
+    def build(visibility_s: float = 30, max_receives: int = 5):
+        if request.param == "sqlite":
+            q = SqliteJobQueue(
+                tmp_path / f"queue{len(created)}.db",
+                visibility_s=visibility_s,
+                max_receives=max_receives,
+            )
+        else:  # pragma: no cover - extended as backends are added
+            raise AssertionError(request.param)
+        created.append(q)
+        return q
+
+    yield build
+    for q in created:
+        q.close()
