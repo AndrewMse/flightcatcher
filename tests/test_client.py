@@ -176,3 +176,68 @@ def test_offline_mode_makes_no_network_calls(tmp_path) -> None:
     mount(offline, lambda request: pytest.fail("offline client made a request"))
     with pytest.raises(WizzError):
         offline.route_map()
+
+
+def test_client_counts_requests_and_cache_hits(client: WizzClient) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.host == "www.wizzair.com":
+            return httpx.Response(200, text="be.wizzair.com/31.2.7/Api")
+        return httpx.Response(200, json={"outboundFlights": []})
+
+    mount(client, handler)
+    client.timetable("OTP", "EIN", date(2026, 9, 1), date(2026, 9, 3))
+    client.timetable("OTP", "EIN", date(2026, 9, 1), date(2026, 9, 3))
+
+    assert len(calls) == 2  # homepage scrape + one timetable
+    assert client.stats.requests == 2
+    assert client.stats.cache_hits == 1
+
+
+def test_client_uses_backend_and_homepage_overrides(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "MIN_REQUEST_INTERVAL", 0.0)
+    custom = WizzClient(
+        cache_dir=tmp_path,
+        backend_url="http://fake.local:9000",
+        homepage_url="http://fake.local:9000/en-gb",
+    )
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        if request.url.path == "/en-gb":
+            return httpx.Response(200, text="be.wizzair.com/30.0.0/Api")
+        return httpx.Response(200, json={"outboundFlights": []})
+
+    mount(custom, handler)
+    custom.timetable("OTP", "EIN", date(2026, 9, 1), date(2026, 9, 2))
+    assert seen[0] == "http://fake.local:9000/en-gb"
+    assert seen[1] == "http://fake.local:9000/30.0.0/Api/search/timetable"
+
+
+def test_client_accepts_injected_cache_and_limiter(tmp_path) -> None:
+    class Limiter:
+        waits = 0
+
+        def wait(self) -> None:
+            Limiter.waits += 1
+
+    class Cache:
+        def __init__(self) -> None:
+            self.data = {"route_map": {"cities": []}}
+
+        def get(self, key, ttl):
+            return self.data.get(key)
+
+        def set(self, key, value) -> None:
+            self.data[key] = value
+
+        def get_stale(self, key):
+            return self.data.get(key)
+
+    injected = WizzClient(cache=Cache(), limiter=Limiter())
+    assert injected.route_map() == {"cities": []}
+    assert injected.stats.cache_hits == 1
+    assert Limiter.waits == 0

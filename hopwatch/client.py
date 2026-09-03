@@ -15,11 +15,11 @@ cached rather than hardcoded.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import threading
 import time
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -27,6 +27,8 @@ from typing import Any
 import httpx
 
 from . import config
+from .cache import Cache, DiskCache
+from .ratelimit import MemoryRateLimiter, RateLimiter
 
 log = logging.getLogger(__name__)
 
@@ -37,56 +39,31 @@ class WizzError(RuntimeError):
     pass
 
 
-class _RateLimiter:
-    """Global minimum spacing between backend calls, safe across threads."""
+@dataclass
+class ClientStats:
+    """What this client has cost Wizz, for the search-run record."""
 
-    def __init__(self, min_interval: float) -> None:
-        self._min_interval = min_interval
-        self._lock = threading.Lock()
-        self._last = 0.0
-
-    def wait(self) -> None:
-        with self._lock:
-            delta = time.monotonic() - self._last
-            if delta < self._min_interval:
-                time.sleep(self._min_interval - delta)
-            self._last = time.monotonic()
-
-
-class _DiskCache:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.root.mkdir(parents=True, exist_ok=True)
-
-    def _path(self, key: str) -> Path:
-        safe = re.sub(r"[^A-Za-z0-9._-]", "_", key)
-        return self.root / f"{safe}.json"
-
-    def get(self, key: str, ttl: float) -> Any | None:
-        path = self._path(key)
-        try:
-            if time.time() - path.stat().st_mtime > ttl:
-                return None
-            return json.loads(path.read_text())
-        except (OSError, ValueError):
-            return None
-
-    def set(self, key: str, value: Any) -> None:
-        try:
-            self._path(key).write_text(json.dumps(value))
-        except OSError as exc:  # a broken cache must never break a search
-            log.warning("cache write failed for %s: %s", key, exc)
-
-    def get_stale(self, key: str) -> Any | None:
-        """Last known value regardless of age, for use when the network fails."""
-        return self.get(key, ttl=float("inf"))
+    requests: int = 0
+    cache_hits: int = 0
 
 
 class WizzClient:
-    def __init__(self, cache_dir: Path | None = None, offline: bool = False) -> None:
-        self.cache = _DiskCache(cache_dir or config.CACHE_DIR)
+    def __init__(
+        self,
+        cache_dir: Path | None = None,
+        offline: bool = False,
+        *,
+        cache: Cache | None = None,
+        limiter: RateLimiter | None = None,
+        backend_url: str | None = None,
+        homepage_url: str | None = None,
+    ) -> None:
+        self.cache: Cache = cache or DiskCache(cache_dir or config.CACHE_DIR)
         self.offline = offline
-        self._limiter = _RateLimiter(config.MIN_REQUEST_INTERVAL)
+        self._limiter: RateLimiter = limiter or MemoryRateLimiter(config.MIN_REQUEST_INTERVAL)
+        self.backend_url = (backend_url or config.BACKEND).rstrip("/")
+        self.homepage_url = homepage_url or config.HOMEPAGE
+        self.stats = ClientStats()
         self._version: str | None = None
         self._version_lock = threading.Lock()
         # The backend rotates the anti-forgery token on every response, so
@@ -139,7 +116,8 @@ class WizzClient:
             return str(self.cache.get_stale("api_version") or config.FALLBACK_API_VERSION)
         try:
             self._limiter.wait()
-            resp = self._http.get(config.HOMEPAGE)
+            self.stats.requests += 1
+            resp = self._http.get(self.homepage_url)
             resp.raise_for_status()
             match = _VERSION_RE.search(resp.text)
             if match:
@@ -174,10 +152,11 @@ class WizzClient:
 
         last_exc: Exception | None = None
         for attempt in range(config.MAX_RETRIES):
-            url = f"{config.BACKEND}/{self.api_version()}/Api/{path}"
+            url = f"{self.backend_url}/{self.api_version()}/Api/{path}"
             extra_headers = kwargs.pop("headers", {})
             try:
                 self._limiter.wait()
+                self.stats.requests += 1
                 with self._request_lock:
                     headers = {**extra_headers, **self._antiforgery_headers()}
                     resp = self._http.request(method, url, headers=headers, **kwargs)
@@ -227,6 +206,7 @@ class WizzClient:
         if not refresh:
             cached = self.cache.get("route_map", config.MAP_TTL)
             if cached:
+                self.stats.cache_hits += 1
                 return cached
 
         if self.offline:
@@ -288,6 +268,7 @@ class WizzClient:
         if not refresh:
             cached = self.cache.get(key, config.TIMETABLE_TTL)
             if cached is not None:
+                self.stats.cache_hits += 1
                 return cached
 
         if self.offline:

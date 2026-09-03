@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..sqlite_util import connect
 from .queue import Message, QueueDepth
 
 UTC = timezone.utc
@@ -41,13 +42,8 @@ class SqliteJobQueue:
         self.path = path
         self.visibility_s = visibility_s
         self.max_receives = max_receives
-        path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(
-            str(path), check_same_thread=False, isolation_level=None, timeout=30
-        )
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn = connect(path, autocommit=True)
         self._conn.executescript(SCHEMA)
 
     def close(self) -> None:
