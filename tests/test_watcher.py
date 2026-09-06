@@ -9,11 +9,11 @@ import pytest
 
 from hopwatch.models import BookingWindow, Departure, Itinerary
 from hopwatch.network import RouteNetwork
-from hopwatch.search import SearchResult
 from hopwatch.settings import PassengerSettings, Settings, WatcherSettings
 from hopwatch.store import BOOKED, PENDING_APPROVAL, SqliteStore, Store
 from hopwatch.timezones import tz_for
-from hopwatch.watcher import Watcher, legs_payload, signature_for
+from hopwatch.sweep import legs_payload, signature_for
+from hopwatch.watcher import Watcher
 
 from .conftest import build_map
 
@@ -122,63 +122,6 @@ def test_legs_payload_round_trips_through_the_store(net, store) -> None:
     assert [leg["origin"] for leg in stored.legs] == ["OTP", "BUD"]
     # The booking flow keys off departs_local, so it must survive the trip.
     assert stored.legs[0]["departs_local"].startswith("2026-09-20T08:00")
-
-
-# --- discovery --------------------------------------------------------------
-
-
-async def test_search_want_persists_candidates(net, store, watcher, monkeypatch) -> None:
-    want_id = add_want(store)
-    now = datetime.now(UTC)
-    found = itinerary_for(net, now)
-
-    monkeypatch.setattr(
-        "hopwatch.watcher.search",
-        lambda *a, **k: SearchResult(itineraries=[found], paths_considered=1),
-    )
-
-    new = await watcher._search_want(store.get_want(want_id), net)
-    assert new == 1
-    candidates = store.list_candidates()
-    assert len(candidates) == 1
-    assert candidates[0].path == ["OTP", "BUD", "EIN"]
-
-    # Seen again on the next sweep: refreshed, not duplicated.
-    assert await watcher._search_want(store.get_want(want_id), net) == 0
-    assert len(store.list_candidates()) == 1
-
-
-async def test_closed_itineraries_are_not_persisted(net, store, watcher, monkeypatch) -> None:
-    add_want(store)
-    now = datetime.now(UTC)
-    stale = itinerary_for(net, now)
-    stale.window.status = "closed"
-
-    monkeypatch.setattr(
-        "hopwatch.watcher.search", lambda *a, **k: SearchResult(itineraries=[stale])
-    )
-    assert await watcher._search_want(store.list_wants()[0], net) == 0
-    assert store.list_candidates() == []
-
-
-async def test_incomplete_search_is_logged_loudly(net, store, watcher, monkeypatch) -> None:
-    add_want(store)
-    monkeypatch.setattr(
-        "hopwatch.watcher.search",
-        lambda *a, **k: SearchResult(itineraries=[], failed_routes=[("OTP", "WAW")]),
-    )
-    await watcher._search_want(store.list_wants()[0], net)
-
-    events = store.list_events()
-    assert any("incomplete" in e["message"] and e["level"] == "warning" for e in events)
-
-
-async def test_unresolvable_want_is_reported_not_silently_skipped(
-    net, store, watcher
-) -> None:
-    add_want(store, origin="Narnia")
-    assert await watcher._search_want(store.list_wants()[0], net) == 0
-    assert any("could not resolve" in e["message"] for e in store.list_events())
 
 
 # --- spend guards -----------------------------------------------------------

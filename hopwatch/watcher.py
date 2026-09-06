@@ -17,20 +17,17 @@ interesting at `max(departure − 72h)` across its legs, and that moment can be
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import config
 from .booking import BookingAborted, BookingFlow, PaymentWallReached, PreparedBooking
 from .browser import BrowserSession, BrowserUnavailable, NotLoggedIn
 from .client import WizzClient
-from .models import Itinerary
 from .multipass import CheckBudget, MultipassChecker, next_check_time
 from .network import RouteNetwork
 from .notify import Notifier, NullNotifier, describe
-from .search import SearchOptions, search
 from .settings import Settings
 from .store import (
     APPROVED,
@@ -41,37 +38,15 @@ from .store import (
     FAILED,
     HOLD_EXPIRED,
     PENDING_APPROVAL,
-    PREPARING,
     REJECTED,
     Candidate,
     Store,
     Want,
 )
+from .sweep import PermanentJobError, sweep_want
 
 log = logging.getLogger(__name__)
 UTC = timezone.utc
-
-
-def signature_for(itinerary: Itinerary) -> str:
-    raw = "|".join(
-        f"{leg.origin}>{leg.destination}@{leg.departs_utc.isoformat()}"
-        for leg in itinerary.legs
-    )
-    return hashlib.sha1(raw.encode()).hexdigest()[:16]
-
-
-def legs_payload(itinerary: Itinerary) -> list[dict[str, Any]]:
-    return [
-        {
-            "origin": leg.origin,
-            "destination": leg.destination,
-            "departs_local": leg.departs_local.isoformat(),
-            "departs_utc": leg.departs_utc.isoformat(),
-            "arrives_utc_estimated": leg.arrives_utc.isoformat(),
-            "duration_min_estimated": leg.duration_min,
-        }
-        for leg in itinerary.legs
-    ]
 
 
 class Watcher:
@@ -203,77 +178,13 @@ class Watcher:
         return total_new
 
     async def _search_want(self, want: Want, network: RouteNetwork) -> int:
-        origins = network.resolve(want.origin)
-        destinations = network.resolve(want.destination)
-        if not origins or not destinations:
-            self.store.log(
-                "search",
-                f"Want {want.name!r}: could not resolve "
-                f"{want.origin!r} or {want.destination!r}",
-                level="error",
-                want_id=want.id,
+        try:
+            result = await asyncio.to_thread(
+                sweep_want, self.store, self._client, network, want
             )
-            return 0
-
-        today = date.today()
-        opts = SearchOptions(
-            date_from=max(want.date_from, today),
-            date_to=want.date_to,
-            max_stops=want.max_stops,
-            min_layover_min=want.min_layover_min,
-            max_layover_min=want.max_layover_min,
-            max_detour=want.max_detour,
-            max_trip_hours=want.max_trip_hours,
-            allow_ground_transfer=want.allow_ground_transfer,
-            earliest_departure_hour=want.after_hour,
-            latest_departure_hour=want.before_hour,
-            limit=200,
-        )
-        if opts.date_to < opts.date_from:
-            return 0
-
-        result = await asyncio.to_thread(
-            search, self._client, network, origins, destinations, opts
-        )
-
-        if result.failed_routes:
-            legs = ", ".join(f"{a}→{b}" for a, b in result.failed_routes)
-            self.store.log(
-                "search",
-                f"Want {want.name!r}: incomplete, could not check {legs}",
-                level="warning",
-                want_id=want.id,
-            )
-
-        new = 0
-        for itinerary in result.itineraries:
-            window = itinerary.window
-            if window is None or window.status == "closed":
-                continue
-            _, was_new = self.store.upsert_candidate(
-                want_id=want.id,
-                signature=signature_for(itinerary),
-                path=itinerary.path,
-                legs=legs_payload(itinerary),
-                stops=itinerary.stops,
-                total_minutes=itinerary.total_minutes,
-                ground_transfer=itinerary.has_ground_transfer,
-                staggered_hours=window.staggered_hours,
-                departs_utc=itinerary.departs_utc,
-                window_opens_utc=window.opens_utc,
-                window_closes_utc=window.closes_utc,
-            )
-            new += int(was_new)
-
-        self.store.mark_want_searched(want.id)
-        if new:
-            self.store.log(
-                "search",
-                f"Want {want.name!r}: {new} new candidate(s), "
-                f"{len(result.itineraries)} total",
-                want_id=want.id,
-            )
-        return new
+        except PermanentJobError:
+            return 0  # already reported as an event by the sweep
+        return result.new_candidates
 
     # --- loop 2: authenticated checks ---------------------------------------
 
