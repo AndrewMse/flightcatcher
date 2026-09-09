@@ -35,6 +35,7 @@ def test_spacing_holds_across_processes(tmp_path) -> None:
 
     stamps.sort()
     assert len(stamps) == 12
-    assert min(b - a for a, b in zip(stamps, stamps[1:])) >= interval * 0.8
+    # Process wake-up jitter can shave a single gap, never the overall rate.
+    assert min(b - a for a, b in zip(stamps, stamps[1:])) >= interval * 0.5
     # And it really is a shared budget, not three independent ones.
-    assert stamps[-1] - stamps[0] >= interval * 11 * 0.8
+    assert stamps[-1] - stamps[0] >= interval * 11 * 0.9

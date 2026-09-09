@@ -55,6 +55,18 @@ async function api(path, options) {
   return body;
 }
 
+// Sweeps run on a worker, not in the request. Poll the job until a worker has
+// finished with it; give up quietly after a while (the result still lands).
+async function waitForJob(key, timeoutMs = 120000) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    const job = await api(`/api/jobs/${encodeURIComponent(key)}`);
+    if (["done", "failed", "dead"].includes(job.status)) return job;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return null;
+}
+
 // --- status strip -----------------------------------------------------------
 
 function renderStatus(data) {
@@ -107,8 +119,14 @@ function renderWants() {
 
     const sweep = el("button", "btn tiny", "Sweep now");
     sweep.onclick = async () => {
-      sweep.disabled = true; sweep.textContent = "Sweeping…";
-      try { await api(`/api/wants/${want.id}/search`, { method: "POST" }); await refresh(); }
+      sweep.disabled = true; sweep.textContent = "Queued…";
+      try {
+        const { job } = await api(`/api/wants/${want.id}/search`, { method: "POST" });
+        sweep.textContent = "Sweeping…";
+        const done = await waitForJob(job);
+        if (done && done.status !== "done") alert(`Sweep ${done.status}: ${done.last_error || ""}`);
+        await refresh();
+      }
       catch (err) { alert(err.message); }
       finally { sweep.disabled = false; sweep.textContent = "Sweep now"; }
     };

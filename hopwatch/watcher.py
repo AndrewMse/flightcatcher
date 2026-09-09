@@ -1,9 +1,10 @@
-"""Layer 4: the watcher.
+"""Layer 4: the watcher, also called the booker.
 
-Three loops on different clocks, because the work has very different costs:
+Loops on different clocks, because the work has very different costs:
 
-* **search** — cheap, unauthenticated layer-2 sweeps of every active want, to
-  discover itineraries and their 72h unlock times. Every 15 minutes.
+* **schedule** — queues cheap, unauthenticated layer-2 sweeps of every active
+  want, which search workers pick up to discover itineraries and their 72h
+  unlock times. Every 15 minutes. On AWS, EventBridge does this instead.
 * **check** — expensive, authenticated Multipass availability checks, spent
   only on candidates whose window is actually open, under a hard budget.
 * **booking** — prepares approved-in-principle bookings up to the confirm
@@ -24,9 +25,9 @@ from typing import Any
 from . import config
 from .booking import BookingAborted, BookingFlow, PaymentWallReached, PreparedBooking
 from .browser import BrowserSession, BrowserUnavailable, NotLoggedIn
-from .client import WizzClient
+from .jobs.queue import JobQueue
+from .jobs.scheduler import enqueue_sweep, resend_stale
 from .multipass import CheckBudget, MultipassChecker, next_check_time
-from .network import RouteNetwork
 from .notify import Notifier, NullNotifier, describe
 from .settings import Settings
 from .store import (
@@ -41,9 +42,7 @@ from .store import (
     REJECTED,
     Candidate,
     Store,
-    Want,
 )
-from .sweep import PermanentJobError, sweep_want
 
 log = logging.getLogger(__name__)
 UTC = timezone.utc
@@ -55,14 +54,14 @@ class Watcher:
         store: Store,
         settings: Settings,
         notifier: Notifier | None = None,
+        queue: JobQueue | None = None,
     ) -> None:
         self.store = store
         self.settings = settings
         self.notifier = notifier or NullNotifier()
         self.budget = CheckBudget(settings.watcher)
 
-        self._client = WizzClient()
-        self._network: RouteNetwork | None = None
+        self.queue = queue
         self._browser: BrowserSession | None = None
         self._browser_lock = asyncio.Lock()
         self._approvals: dict[int, asyncio.Future] = {}
@@ -80,7 +79,7 @@ class Watcher:
         self._running = True
         self.store.log("watcher", "Watcher started")
         await asyncio.gather(
-            self._search_loop(),
+            self._schedule_loop(),
             self._check_loop(),
             self._maintenance_loop(),
             self._keepalive_loop(),
@@ -99,7 +98,6 @@ class Watcher:
                 log.debug("could not snapshot cookies during shutdown")
             await self._browser.close()
             self._browser = None
-        self._client.close()
         self.store.log("watcher", "Watcher stopped")
 
     def _spawn(self, coro) -> None:
@@ -108,12 +106,6 @@ class Watcher:
         task.add_done_callback(self._tasks.discard)
 
     # --- shared resources ---------------------------------------------------
-
-    async def network(self) -> RouteNetwork:
-        if self._network is None:
-            raw = await asyncio.to_thread(self._client.route_map)
-            self._network = RouteNetwork(raw)
-        return self._network
 
     async def browser(self) -> BrowserSession:
         """Lazily start the logged-in browser, reusing it across checks."""
@@ -153,38 +145,29 @@ class Watcher:
                     pass
                 self._browser = None
 
-    # --- loop 1: cheap discovery -------------------------------------------
+    # --- loop 1: queue cheap discovery -------------------------------------
 
-    async def _search_loop(self) -> None:
+    async def _schedule_loop(self) -> None:
+        if self.queue is None or not self.settings.workers.scheduler:
+            return
+        interval = self.settings.watcher.search_interval_min
         while self._running:
             try:
-                await self.search_all_wants()
+                await asyncio.to_thread(self.schedule_once, datetime.now(UTC))
             except Exception as exc:  # noqa: BLE001
-                log.exception("search pass failed")
+                log.exception("scheduling pass failed")
                 self.last_problem = str(exc)
-                self.store.log("search", f"Search pass failed: {exc}", level="error")
-            await asyncio.sleep(self.settings.watcher.search_interval_min * 60)
+                self.store.log("search", f"Could not queue sweeps: {exc}", level="error")
+            await asyncio.sleep(interval * 60)
 
-    async def search_all_wants(self) -> int:
-        wants = self.store.list_wants(active_only=True)
-        if not wants:
-            return 0
-        network = await self.network()
-        total_new = 0
-        for want in wants:
-            total_new += await self._search_want(want, network)
-        self.last_search_at = datetime.now(UTC)
-        self.store.expire_stale_candidates(self.last_search_at)
-        return total_new
-
-    async def _search_want(self, want: Want, network: RouteNetwork) -> int:
-        try:
-            result = await asyncio.to_thread(
-                sweep_want, self.store, self._client, network, want
-            )
-        except PermanentJobError:
-            return 0  # already reported as an event by the sweep
-        return result.new_candidates
+    def schedule_once(self, now: datetime) -> int:
+        """Queue this slot's sweeps and re-send any that never got picked up."""
+        interval = self.settings.watcher.search_interval_min
+        created = enqueue_sweep(self.store, self.queue, now, interval)
+        resend_stale(self.store, self.queue, now, older_than_s=interval * 60)
+        self.store.expire_stale_candidates(now)
+        self.last_search_at = now
+        return created
 
     # --- loop 2: authenticated checks ---------------------------------------
 

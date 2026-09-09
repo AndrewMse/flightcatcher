@@ -12,3 +12,9 @@ def test_package_version() -> None:
 
 def test_cli_is_named_hopwatch() -> None:
     assert build_parser().prog == "hopwatch"
+
+
+def test_worker_command_is_wired() -> None:
+    args = build_parser().parse_args(["worker", "--concurrency", "3"])
+    assert args.concurrency == 3
+    assert args.func.__name__ == "cmd_worker"

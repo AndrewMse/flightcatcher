@@ -14,11 +14,13 @@ import json
 import logging
 import math
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 
+from .. import config
 from ..client import WizzClient
 from ..network import RouteNetwork
 from ..store import (
@@ -62,6 +64,29 @@ def _job_key(body: dict[str, Any] | str) -> str | None:
         return None
     key = body.get("job")
     return key if isinstance(key, str) and key else None
+
+
+def network_loader(
+    client: Any,
+    ttl_s: float = config.MAP_TTL,
+    clock: Callable[[], float] = time.monotonic,
+) -> Callable[[], RouteNetwork]:
+    """Load the route network once and reuse it until it is ``ttl_s`` old.
+
+    Building the graph from the route map is the slowest step of a sweep
+    that hits the cache, and the network changes a few times a year.
+    """
+    lock = threading.Lock()
+    cached: list[Any] = [None, 0.0]
+
+    def load() -> RouteNetwork:
+        with lock:
+            if cached[0] is None or clock() - cached[1] > ttl_s:
+                cached[0] = RouteNetwork(client.route_map())
+                cached[1] = clock()
+            return cached[0]
+
+    return load
 
 
 class JobRunner:

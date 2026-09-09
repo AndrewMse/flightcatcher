@@ -10,7 +10,7 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 from .migrate import env, migrate_path
 
@@ -104,6 +104,53 @@ class WebSettings:
 
 
 @dataclass
+class BackendSettings:
+    # "local": SQLite for state and the job queue, workers on this machine.
+    # "aws":   DynamoDB and SQS, workers on Lambda. The booker stays here.
+    mode: str = "local"
+
+
+@dataclass
+class AwsSettings:
+    region: str = "eu-central-1"
+    table_prefix: str = "hopwatch"
+    queue_url: str = ""
+    dlq_url: str = ""
+    # Only for testing against an emulator such as moto.
+    endpoint_url: str = ""
+
+
+@dataclass
+class QueueSettings:
+    # How long a worker holds a job before it is presumed dead and the job is
+    # handed to someone else. Also how long recovery from a crash takes.
+    visibility_s: int = 120
+    # Deliveries before a job is given up on and dead-lettered.
+    max_receives: int = 5
+
+
+@dataclass
+class WorkerSettings:
+    # Unset means "whatever suits the backend": locally the service runs one
+    # search worker and the scheduler itself; on AWS, Lambda and EventBridge
+    # do both. Running a second scheduler is harmless -- jobs are idempotent.
+    in_process: int | None = None
+    scheduler: bool | None = None
+
+
+@dataclass
+class LoggingSettings:
+    format: str = "text"  # "text" or "json"
+
+
+@dataclass
+class WizzSettings:
+    # Point the client somewhere else, e.g. the benchmark's fake backend.
+    backend_url: str = ""
+    homepage_url: str = ""
+
+
+@dataclass
 class Settings:
     database: Path = Path("~/.local/share/hopwatch/hopwatch.db")
     passenger: PassengerSettings = field(default_factory=PassengerSettings)
@@ -111,6 +158,12 @@ class Settings:
     watcher: WatcherSettings = field(default_factory=WatcherSettings)
     discord: DiscordSettings = field(default_factory=DiscordSettings)
     web: WebSettings = field(default_factory=WebSettings)
+    backend: BackendSettings = field(default_factory=BackendSettings)
+    aws: AwsSettings = field(default_factory=AwsSettings)
+    queue: QueueSettings = field(default_factory=QueueSettings)
+    workers: WorkerSettings = field(default_factory=WorkerSettings)
+    logging: LoggingSettings = field(default_factory=LoggingSettings)
+    wizz: WizzSettings = field(default_factory=WizzSettings)
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
@@ -123,7 +176,24 @@ class Settings:
         settings._apply_env()
         settings._expand_paths()
         settings._migrate_legacy_paths()
+        settings._apply_mode_defaults()
         return settings
+
+    @classmethod
+    def from_env(cls) -> Settings:
+        """Settings from environment variables alone, as on Lambda."""
+        settings = cls()
+        settings._apply_env()
+        settings._expand_paths()
+        settings._apply_mode_defaults()
+        return settings
+
+    def _apply_mode_defaults(self) -> None:
+        local = self.backend.mode == "local"
+        if self.workers.in_process is None:
+            self.workers.in_process = 1 if local else 0
+        if self.workers.scheduler is None:
+            self.workers.scheduler = local
 
     def _apply_env(self) -> None:
         token = env("DISCORD_TOKEN")
@@ -136,6 +206,21 @@ class Settings:
         db = env("DB")
         if db:
             self.database = Path(db)
+
+        for name, section, attr in (
+            ("BACKEND", self.backend, "mode"),
+            ("AWS_REGION", self.aws, "region"),
+            ("TABLE_PREFIX", self.aws, "table_prefix"),
+            ("QUEUE_URL", self.aws, "queue_url"),
+            ("DLQ_URL", self.aws, "dlq_url"),
+            ("AWS_ENDPOINT", self.aws, "endpoint_url"),
+            ("LOG_FORMAT", self.logging, "format"),
+            ("WIZZ_BACKEND", self.wizz, "backend_url"),
+            ("WIZZ_HOMEPAGE", self.wizz, "homepage_url"),
+        ):
+            value = env(name)
+            if value:
+                setattr(section, attr, value)
 
     def _expand_paths(self) -> None:
         self.database = Path(self.database).expanduser()
@@ -172,24 +257,15 @@ class Settings:
 
 def _from_dict(cls: type, data: dict[str, Any]) -> Any:
     """Build a nested dataclass from parsed TOML, ignoring unknown keys."""
+    hints = get_type_hints(cls)
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
         if f.name not in data:
             continue
         value = data[f.name]
-        if is_dataclass(f.type) if isinstance(f.type, type) else False:
-            kwargs[f.name] = _from_dict(f.type, value)
-        elif isinstance(value, dict) and f.name in {
-            "passenger", "browser", "watcher", "discord", "web"
-        }:
-            nested = {
-                "passenger": PassengerSettings,
-                "browser": BrowserSettings,
-                "watcher": WatcherSettings,
-                "discord": DiscordSettings,
-                "web": WebSettings,
-            }[f.name]
-            kwargs[f.name] = _from_dict(nested, value)
+        kind = hints.get(f.name)
+        if isinstance(kind, type) and is_dataclass(kind) and isinstance(value, dict):
+            kwargs[f.name] = _from_dict(kind, value)
         else:
             kwargs[f.name] = value
     return cls(**kwargs)
@@ -243,4 +319,26 @@ mention = ""
 enabled = true
 host = "127.0.0.1"
 port = 8765
+
+[backend]
+# "local" keeps state and the search queue in SQLite on this machine.
+# "aws" uses DynamoDB, SQS and Lambda workers; see the README.
+mode = "local"
+
+[queue]
+visibility_s = 120   # a crashed worker's job is retried after this long
+max_receives = 5     # attempts before a job is dead-lettered
+
+[workers]
+# in_process = 1     # search workers inside `hopwatch serve` (0 on AWS)
+# scheduler = true   # queue sweeps from here (off on AWS: EventBridge does it)
+
+[logging]
+format = "text"      # "json" for log shipping
+
+# [aws]
+# region = "eu-central-1"
+# table_prefix = "hopwatch"
+# queue_url = ""
+# dlq_url = ""
 """

@@ -538,6 +538,10 @@ class SqliteStore:
             (JOB_RETRYING, error, _now(), key),
         )
 
+    def touch_job(self, key: str, now: datetime | None = None) -> None:
+        stamp = (now or datetime.now(UTC)).isoformat()
+        self._write("UPDATE jobs SET updated_at = ? WHERE key = ?", (stamp, key))
+
     def list_jobs(self, status: str | None = None, limit: int = 100) -> list[Job]:
         sql = "SELECT * FROM jobs"
         params: list[Any] = []

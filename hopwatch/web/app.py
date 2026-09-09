@@ -20,6 +20,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..client import WizzClient
+from ..jobs.queue import JobQueue
+from ..jobs.scheduler import enqueue_manual
 from ..network import RouteNetwork
 from ..search import SearchOptions, search
 from ..settings import Settings
@@ -72,7 +74,12 @@ class AdHocSearch(BaseModel):
     allow_ground_transfer: bool = False
 
 
-def create_app(store: Store, settings: Settings, watcher: Any | None = None) -> FastAPI:
+def create_app(
+    store: Store,
+    settings: Settings,
+    watcher: Any | None = None,
+    queue: JobQueue | None = None,
+) -> FastAPI:
     app = FastAPI(title="Hopwatch", docs_url="/api/docs")
     app.state.network = None
     app.state.client = WizzClient()
@@ -144,15 +151,35 @@ def create_app(store: Store, settings: Settings, watcher: Any | None = None) -> 
         store.delete_want(want_id)
         store.log("want", f"Deleted want {want_id}")
 
-    @app.post("/api/wants/{want_id}/search")
+    @app.post("/api/wants/{want_id}/search", status_code=202)
     async def search_want_now(want_id: int) -> dict[str, Any]:
+        """Queue a sweep of one want now. Clicking twice queues it once."""
         want = store.get_want(want_id)
         if want is None:
             raise HTTPException(404, "No such want")
-        if watcher is None:
-            raise HTTPException(503, "Watcher is not running")
-        found = await watcher._search_want(want, await network())
-        return {"new_candidates": found}
+        if not want.active:
+            raise HTTPException(409, "This want is paused — resume it to sweep it.")
+        if queue is None:
+            raise HTTPException(503, "No job queue is configured")
+        key, created = enqueue_manual(store, queue, want_id, datetime.now(UTC))
+        return {"job": key, "created": created}
+
+    # --- jobs and search runs -----------------------------------------------
+
+    @app.get("/api/jobs")
+    async def list_jobs(status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        return [j.to_dict() for j in store.list_jobs(status=status, limit=limit)]
+
+    @app.get("/api/jobs/{key}")
+    async def get_job(key: str) -> dict[str, Any]:
+        job = store.get_job(key)
+        if job is None:
+            raise HTTPException(404, "No such job")
+        return job.to_dict()
+
+    @app.get("/api/search-runs")
+    async def search_runs(want_id: int | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        return [r.to_dict() for r in store.list_search_runs(want_id=want_id, limit=limit)]
 
     # --- candidates ---------------------------------------------------------
 

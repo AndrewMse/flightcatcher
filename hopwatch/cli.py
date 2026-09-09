@@ -410,17 +410,34 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_worker(args: argparse.Namespace) -> int:
+    """Run search workers only: no browser, no web UI, no Discord."""
+    from .service import run_workers
+    from .settings import Settings
+
+    if not args.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+    settings = Settings.load(Path(args.config).expanduser() if args.config else None)
+    try:
+        asyncio.run(run_workers(settings, args.concurrency))
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     """Read-only peek at the database, without starting the service."""
+    from .backend import open_backend
     from .settings import Settings
-    from .store import PENDING_APPROVAL, SqliteStore
+    from .store import PENDING_APPROVAL
 
     settings = Settings.load(Path(args.config).expanduser() if args.config else None)
-    if not settings.database.exists():
+    if settings.backend.mode == "local" and not settings.database.exists():
         print(f"No database at {settings.database} — nothing has run yet.")
         return 0
 
-    store = SqliteStore(settings.database)
+    backend = open_backend(settings)
+    store = backend.store
     try:
         wants = store.list_wants()
         candidates = store.list_candidates(status="watching", limit=500)
@@ -441,11 +458,14 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"\n{len(pending)} booking(s) waiting for approval:")
             for b in pending:
                 print(f"  #{b.id}  {b.summary}")
+        depth = backend.queue.depth()
+        print(f"Queue:    {depth.visible} waiting, {depth.in_flight} in progress, "
+              f"{depth.dead} dead-lettered")
         for event in store.list_events(limit=args.events):
             print(f"  {event['ts'][11:16]}  {event['level']:<8} {event['message']}")
         return 0
     finally:
-        store.close()
+        backend.close()
 
 
 def cmd_refresh(args: argparse.Namespace, client: WizzClient) -> int:
@@ -542,6 +562,12 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=None)
     serve.add_argument("--no-web", action="store_true")
     serve.set_defaults(func=cmd_serve, standalone=True)
+
+    worker = sub.add_parser("worker", help="run search workers that take jobs off the queue")
+    worker.add_argument("--config", default=None)
+    worker.add_argument("--concurrency", type=int, default=1,
+                        help="workers in this process; they share one rate limit")
+    worker.set_defaults(func=cmd_worker, standalone=True)
 
     status = sub.add_parser("status", help="summarise stored state without running")
     status.add_argument("--config", default=None)

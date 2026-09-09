@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from hopwatch.jobs.sqlite_queue import SqliteJobQueue
 from hopwatch.network import RouteNetwork
 from hopwatch.settings import Settings
 from hopwatch.store import PENDING_APPROVAL, SqliteStore, Store
@@ -43,14 +44,17 @@ class FakeWatcher:
 @pytest.fixture
 def client(tmp_path):
     store = SqliteStore(tmp_path / "web.db")
+    queue = SqliteJobQueue(tmp_path / "web.db")
     settings = Settings()
     watcher = FakeWatcher(store)
-    app = create_app(store, settings, watcher)
+    app = create_app(store, settings, watcher, queue=queue)
     app.state.network = RouteNetwork(build_map())
     with TestClient(app) as test_client:
         test_client.store = store
+        test_client.queue = queue
         test_client.watcher = watcher
         yield test_client
+    queue.close()
     store.close()
 
 
@@ -219,3 +223,70 @@ def test_frontend_is_served(client) -> None:
     page = client.get("/")
     assert page.status_code == 200
     assert "Hopwatch" in page.text
+
+
+# --- queued sweeps ----------------------------------------------------------
+
+
+def test_search_now_enqueues_a_job(client) -> None:
+    want_id = client.post("/api/wants", json=WANT).json()["id"]
+    response = client.post(f"/api/wants/{want_id}/search")
+    assert response.status_code == 202
+    body = response.json()
+    assert body["job"].startswith(f"manual:{want_id}:")
+    assert body["created"] is True
+    assert client.queue.depth().visible == 1
+
+    job = client.get(f"/api/jobs/{body['job']}").json()
+    assert job["status"] == "queued"
+    assert job["want_id"] == want_id
+
+
+def test_search_now_twice_is_one_job(client) -> None:
+    want_id = client.post("/api/wants", json=WANT).json()["id"]
+    first = client.post(f"/api/wants/{want_id}/search").json()
+    second = client.post(f"/api/wants/{want_id}/search").json()
+    assert first["job"] == second["job"]
+    assert second["created"] is False
+    assert client.queue.depth().visible == 1
+
+
+def test_search_now_on_a_paused_want_is_refused(client) -> None:
+    want_id = client.post("/api/wants", json=WANT | {"active": False}).json()["id"]
+    assert client.post(f"/api/wants/{want_id}/search").status_code == 409
+
+
+def test_search_now_on_a_missing_want_is_404(client) -> None:
+    assert client.post("/api/wants/999/search").status_code == 404
+
+
+def test_search_now_without_a_queue_is_503(tmp_path) -> None:
+    store = SqliteStore(tmp_path / "noq.db")
+    app = create_app(store, Settings(), FakeWatcher(store))
+    want_id = store.add_want(
+        name="x", origin="OTP", destination="EIN", date_from="2026-09-15",
+        date_to="2026-09-30", max_stops=1, min_layover_min=180, max_layover_min=1200,
+        max_detour=2.2, max_trip_hours=30.0, allow_ground_transfer=0, after_hour=None,
+        before_hour=None, auto_request_booking=0, active=1, notes="",
+    )
+    with TestClient(app) as test_client:
+        assert test_client.post(f"/api/wants/{want_id}/search").status_code == 503
+    store.close()
+
+
+def test_jobs_listing_and_lookup(client) -> None:
+    client.store.create_job("search:1:1", "search_want", 1)
+    client.store.create_job("search:1:2", "search_want", 1)
+    client.store.finish_job("search:1:2", "done")
+    queued = client.get("/api/jobs", params={"status": "queued"}).json()
+    assert [j["key"] for j in queued] == ["search:1:1"]
+    assert len(client.get("/api/jobs").json()) == 2
+    assert client.get("/api/jobs/search:9:9").status_code == 404
+
+
+def test_search_runs_endpoint(client) -> None:
+    run_id = client.store.start_search_run(want_id=5, job_key="search:5:1")
+    client.store.finish_search_run(run_id, 5, "ok", upstream_calls=12, cache_hits=30)
+    runs = client.get("/api/search-runs", params={"want_id": 5}).json()
+    assert [(r["id"], r["upstream_calls"], r["cache_hits"]) for r in runs] == [(run_id, 12, 30)]
+    assert client.get("/api/search-runs", params={"want_id": 6}).json() == []

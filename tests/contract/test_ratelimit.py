@@ -47,7 +47,10 @@ def test_spacing_holds_across_threads(make_limiter) -> None:
         t.join()
 
     assert len(stamps) == 12
-    assert min(gaps(stamps)) >= INTERVAL * 0.8
+    # Wake-up jitter can shave a single gap, but never the overall rate:
+    # an unshared limiter would let the three threads run side by side.
+    assert min(gaps(stamps)) >= INTERVAL * 0.5
+    assert max(stamps) - min(stamps) >= INTERVAL * 11 * 0.9
 
 
 def test_zero_interval_never_sleeps(make_limiter) -> None:

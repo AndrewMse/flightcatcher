@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from hopwatch.jobs.sqlite_queue import SqliteJobQueue
 from hopwatch.models import BookingWindow, Departure, Itinerary
 from hopwatch.network import RouteNetwork
 from hopwatch.settings import PassengerSettings, Settings, WatcherSettings
@@ -71,9 +72,7 @@ def settings(tmp_path) -> Settings:
 
 @pytest.fixture
 def watcher(store, settings) -> Watcher:
-    w = Watcher(store, settings)
-    yield w
-    w._client.close()
+    return Watcher(store, settings)
 
 
 def add_want(store: Store, **overrides) -> int:
@@ -226,3 +225,36 @@ def test_status_snapshot(watcher) -> None:
     assert status["passenger_configured"] is True
     assert status["open_bookings"] == 0
     assert "checks_remaining_this_hour" in status
+
+
+# --- scheduling -------------------------------------------------------------
+
+
+def test_schedule_once_queues_one_sweep_per_want_per_slot(store, settings, tmp_path) -> None:
+    queue = SqliteJobQueue(tmp_path / "watcher.db")
+    watcher = Watcher(store, settings, queue=queue)
+    add_want(store, name="a")
+    add_want(store, name="b", active=0)
+    now = datetime.now(UTC)
+
+    assert watcher.schedule_once(now) == 1
+    assert watcher.last_search_at == now
+    assert watcher.schedule_once(now + timedelta(seconds=30)) == 0
+    assert queue.depth().visible == 1
+    queue.close()
+
+
+def test_schedule_once_expires_closed_candidates(store, settings, tmp_path) -> None:
+    queue = SqliteJobQueue(tmp_path / "watcher.db")
+    watcher = Watcher(store, settings, queue=queue)
+    want_id = add_want(store)
+    now = datetime.now(UTC)
+    store.upsert_candidate(
+        want_id=want_id, signature="old", path=["OTP", "EIN"], legs=[], stops=0,
+        total_minutes=168, ground_transfer=False, staggered_hours=0,
+        departs_utc=now - timedelta(hours=1), window_opens_utc=now - timedelta(hours=73),
+        window_closes_utc=now - timedelta(hours=4),
+    )
+    watcher.schedule_once(now)
+    assert store.list_candidates(status="watching") == []
+    queue.close()

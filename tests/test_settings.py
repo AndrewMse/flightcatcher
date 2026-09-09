@@ -147,3 +147,57 @@ def test_explicit_legacy_paths_are_left_where_they_are(tmp_path, isolated_home) 
     ))
     assert settings.database == db
     assert db.read_text() == "db"
+
+
+def test_local_mode_defaults_run_scheduler_and_one_worker(tmp_path) -> None:
+    settings = Settings.load(tmp_path / "missing.toml")
+    assert settings.backend.mode == "local"
+    assert settings.workers.in_process == 1
+    assert settings.workers.scheduler is True
+    assert settings.queue.visibility_s == 120
+    assert settings.queue.max_receives == 5
+    assert settings.logging.format == "text"
+
+
+def test_aws_mode_defaults_disable_scheduler_and_workers(tmp_path) -> None:
+    settings = Settings.load(write_config(tmp_path, '[backend]\nmode = "aws"\n'))
+    assert settings.workers.in_process == 0
+    assert settings.workers.scheduler is False
+    assert settings.aws.region == "eu-central-1"
+    assert settings.aws.table_prefix == "hopwatch"
+
+
+def test_toml_overrides_mode_defaults(tmp_path) -> None:
+    settings = Settings.load(write_config(tmp_path, """
+[backend]
+mode = "aws"
+[workers]
+in_process = 2
+scheduler = true
+[aws]
+queue_url = "https://sqs.example/q"
+"""))
+    assert settings.workers.in_process == 2
+    assert settings.workers.scheduler is True
+    assert settings.aws.queue_url == "https://sqs.example/q"
+
+
+def test_env_configures_the_backend(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOPWATCH_BACKEND", "aws")
+    monkeypatch.setenv("HOPWATCH_QUEUE_URL", "https://sqs.example/q")
+    monkeypatch.setenv("HOPWATCH_DLQ_URL", "https://sqs.example/dlq")
+    monkeypatch.setenv("HOPWATCH_TABLE_PREFIX", "hw-test")
+    monkeypatch.setenv("HOPWATCH_AWS_REGION", "us-east-1")
+    monkeypatch.setenv("HOPWATCH_AWS_ENDPOINT", "http://localhost:5000")
+    monkeypatch.setenv("HOPWATCH_LOG_FORMAT", "json")
+    monkeypatch.setenv("HOPWATCH_WIZZ_BACKEND", "http://fake")
+    settings = Settings.from_env()
+    assert settings.backend.mode == "aws"
+    assert settings.aws.queue_url == "https://sqs.example/q"
+    assert settings.aws.dlq_url == "https://sqs.example/dlq"
+    assert settings.aws.table_prefix == "hw-test"
+    assert settings.aws.region == "us-east-1"
+    assert settings.aws.endpoint_url == "http://localhost:5000"
+    assert settings.logging.format == "json"
+    assert settings.wizz.backend_url == "http://fake"
+    assert settings.workers.scheduler is False

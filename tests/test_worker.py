@@ -259,3 +259,23 @@ async def test_run_worker_retries_failed_jobs_later(store, tmp_path, job, calls)
     depth = queue.depth()
     assert (depth.visible, depth.in_flight) == (0, 1)  # hidden for the backoff
     queue.close()
+
+
+def test_network_loader_caches_until_ttl() -> None:
+    from hopwatch.jobs.worker import network_loader
+
+    fetches: list[int] = []
+
+    class Client:
+        def route_map(self):
+            fetches.append(1)
+            return build_map()
+
+    clock = [0.0]
+    load = network_loader(Client(), ttl_s=100, clock=lambda: clock[0])
+    first, second = load(), load()
+    assert first is second
+    assert len(fetches) == 1
+    clock[0] = 101
+    load()
+    assert len(fetches) == 2
