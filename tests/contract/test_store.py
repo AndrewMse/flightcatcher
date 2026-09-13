@@ -12,18 +12,10 @@ from hopwatch.store import (
     PENDING_APPROVAL,
     SOLD_OUT,
     WATCHING,
-    SqliteStore,
     Store,
 )
 
 UTC = timezone.utc
-
-
-@pytest.fixture
-def store(tmp_path) -> SqliteStore:
-    s = SqliteStore(tmp_path / "test.db")
-    yield s
-    s.close()
 
 
 def make_want(store: Store, **overrides) -> int:
@@ -240,3 +232,23 @@ def test_candidate_dict_includes_derived_fields(store: Store) -> None:
     assert data["trip_credits"] == 2
     assert data["availability"] == AVAILABLE
     assert data["window_status"] == "open"
+
+
+def test_concurrent_upserts_of_one_itinerary_make_one_candidate(store: Store) -> None:
+    """Two workers sweeping overlapping wants find the same flight at once."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    want_id = make_want(store)
+    now = datetime.now(UTC)
+
+    def upsert(_: int):
+        return make_candidate(
+            store, want_id, opens=now - timedelta(hours=1), closes=now + timedelta(hours=40)
+        )
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(upsert, range(6)))
+
+    assert len({candidate_id for candidate_id, _ in results}) == 1
+    assert sum(was_new for _, was_new in results) == 1
+    assert len(store.list_candidates()) == 1

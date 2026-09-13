@@ -12,7 +12,24 @@ import pytest
 from hopwatch.jobs.sqlite_queue import SqliteJobQueue
 from hopwatch.store import SqliteStore
 
-STORE_BACKENDS = ["sqlite"]
+STORE_BACKENDS = ["sqlite", "dynamo"]
+REGION = "eu-central-1"
+PREFIX = "hwtest"
+
+
+@pytest.fixture
+def aws(monkeypatch):
+    """A moto-mocked AWS account. Nothing here can reach real AWS."""
+    moto = pytest.importorskip("moto")
+    for name, value in {
+        "AWS_ACCESS_KEY_ID": "testing",
+        "AWS_SECRET_ACCESS_KEY": "testing",
+        "AWS_SESSION_TOKEN": "testing",
+        "AWS_DEFAULT_REGION": REGION,
+    }.items():
+        monkeypatch.setenv(name, value)
+    with moto.mock_aws():
+        yield
 QUEUE_BACKENDS = ["sqlite"]
 
 
@@ -20,7 +37,14 @@ QUEUE_BACKENDS = ["sqlite"]
 def store(request, tmp_path):
     if request.param == "sqlite":
         s = SqliteStore(tmp_path / "contract.db")
-    else:  # pragma: no cover - extended as backends are added
+    elif request.param == "dynamo":
+        request.getfixturevalue("aws")
+        from hopwatch.aws.dynamo_store import DynamoStore
+        from hopwatch.aws.schema import create_tables
+
+        create_tables(PREFIX, REGION)
+        s = DynamoStore(PREFIX, REGION)
+    else:  # pragma: no cover
         raise AssertionError(request.param)
     yield s
     s.close()

@@ -153,3 +153,14 @@ def test_heartbeats_round_trip(store) -> None:
     beats = store.heartbeats()
     assert beats["booker"] == now
     assert beats["worker:a"] == now - timedelta(minutes=1)
+
+
+def test_only_one_of_many_concurrent_claims_wins(store) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    store.create_job(KEY, "search_want", 1)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda i: store.claim_job(KEY, f"w{i}", lease_s=60), range(8)))
+    winners = [r for r in results if r is not None]
+    assert len(winners) == 1
+    assert store.get_job(KEY).attempts == 1

@@ -21,6 +21,10 @@ web = [
 discord = [
     "discord.py>=2.3",
 ]
+# The AWS backend: DynamoDB for state, SQS for the job queue.
+aws = [
+    "boto3>=1.34",
+]
 # Everything needed to run `hopwatch serve`.
 service = [
     "hopwatch[browser,web,discord]",
@@ -29,6 +33,8 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
+    "boto3>=1.34",
+    "moto[server]>=5.0",
 ]
 
 [project.scripts]

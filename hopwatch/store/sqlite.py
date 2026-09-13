@@ -256,21 +256,12 @@ class SqliteStore:
         window_opens_utc: datetime,
         window_closes_utc: datetime,
     ) -> tuple[int, bool]:
-        """Insert or refresh a candidate. Returns (id, was_new)."""
-        now = _now()
-        existing = self._read(
-            "SELECT id FROM candidates WHERE want_id = ? AND signature = ?",
-            (want_id, signature),
-        )
-        if existing:
-            candidate_id = existing[0]["id"]
-            self._write(
-                "UPDATE candidates SET last_seen = ?, status = CASE WHEN status = ? "
-                "THEN ? ELSE status END WHERE id = ?",
-                (now, EXPIRED, WATCHING, candidate_id),
-            )
-            return candidate_id, False
+        """Insert or refresh a candidate. Returns (id, was_new).
 
+        Insert first and let the unique key decide: two workers finding the
+        same itinerary at the same moment then get one row, not an error.
+        """
+        now = _now()
         cur = self._write(
             """
             INSERT INTO candidates (
@@ -279,6 +270,7 @@ class SqliteStore:
                 window_closes_utc, status, availability, first_seen, last_seen,
                 next_check_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(want_id, signature) DO NOTHING
             """,
             (
                 want_id, signature, ">".join(path), json.dumps(legs), stops,
@@ -288,7 +280,19 @@ class SqliteStore:
                 window_opens_utc.isoformat(),
             ),
         )
-        return int(cur.lastrowid), True
+        if cur.rowcount == 1:
+            return int(cur.lastrowid), True
+
+        self._write(
+            "UPDATE candidates SET last_seen = ?, status = CASE WHEN status = ? "
+            "THEN ? ELSE status END WHERE want_id = ? AND signature = ?",
+            (now, EXPIRED, WATCHING, want_id, signature),
+        )
+        existing = self._read(
+            "SELECT id FROM candidates WHERE want_id = ? AND signature = ?",
+            (want_id, signature),
+        )
+        return int(existing[0]["id"]), False
 
     def get_candidate(self, candidate_id: int) -> Candidate | None:
         rows = self._read(
