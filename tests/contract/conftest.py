@@ -30,7 +30,7 @@ def aws(monkeypatch):
         monkeypatch.setenv(name, value)
     with moto.mock_aws():
         yield
-QUEUE_BACKENDS = ["sqlite"]
+QUEUE_BACKENDS = ["sqlite", "sqs"]
 
 
 @pytest.fixture(params=STORE_BACKENDS)
@@ -74,7 +74,15 @@ def make_queue(request, tmp_path):
                 visibility_s=visibility_s,
                 max_receives=max_receives,
             )
-        else:  # pragma: no cover - extended as backends are added
+        elif request.param == "sqs":
+            request.getfixturevalue("aws")
+            from hopwatch.aws.sqs_queue import SqsJobQueue
+
+            queue_url, dlq_url = create_sqs_pair(
+                f"q{len(created)}", visibility_s=visibility_s, max_receives=max_receives
+            )
+            q = SqsJobQueue(queue_url, REGION, dlq_url=dlq_url)
+        else:  # pragma: no cover
             raise AssertionError(request.param)
         created.append(q)
         return q
@@ -82,3 +90,26 @@ def make_queue(request, tmp_path):
     yield build
     for q in created:
         q.close()
+
+
+def create_sqs_pair(name: str, visibility_s: float = 30, max_receives: int = 5) -> tuple[str, str]:
+    """A queue and its dead-letter queue, wired the way the CDK stack wires them."""
+    import json
+
+    import boto3
+
+    sqs = boto3.client("sqs", region_name=REGION)
+    dlq_url = sqs.create_queue(QueueName=f"{name}-dlq")["QueueUrl"]
+    dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+        "Attributes"
+    ]["QueueArn"]
+    queue_url = sqs.create_queue(
+        QueueName=name,
+        Attributes={
+            "VisibilityTimeout": str(int(visibility_s)),
+            "RedrivePolicy": json.dumps(
+                {"deadLetterTargetArn": dlq_arn, "maxReceiveCount": str(max_receives)}
+            ),
+        },
+    )["QueueUrl"]
+    return queue_url, dlq_url

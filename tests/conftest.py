@@ -11,6 +11,8 @@ import pytest
 
 from hopwatch.network import RouteNetwork
 
+from .contract.conftest import aws  # noqa: F401  (moto-mocked AWS for any test)
+
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path_factory, monkeypatch):

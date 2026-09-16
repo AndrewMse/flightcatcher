@@ -9,16 +9,25 @@ import pytest
 
 from hopwatch.ratelimit import MemoryRateLimiter, SqliteRateLimiter
 
+from .conftest import PREFIX, REGION
+
 INTERVAL = 0.05
 
 
-@pytest.fixture(params=["memory", "sqlite"])
+@pytest.fixture(params=["memory", "sqlite", "dynamo"])
 def make_limiter(request, tmp_path):
     def build(interval: float = INTERVAL):
         if request.param == "memory":
             return MemoryRateLimiter(interval)
         if request.param == "sqlite":
             return SqliteRateLimiter(tmp_path / "limit.db", interval)
+        if request.param == "dynamo":
+            request.getfixturevalue("aws")
+            from hopwatch.aws.ratelimit import DynamoRateLimiter
+            from hopwatch.aws.schema import create_tables
+
+            create_tables(PREFIX, REGION)
+            return DynamoRateLimiter(PREFIX, REGION, min_interval=interval)
         raise AssertionError(request.param)  # pragma: no cover
 
     return build

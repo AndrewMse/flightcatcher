@@ -64,7 +64,26 @@ def _local(settings: Settings) -> Backend:
 
 
 def _aws(settings: Settings) -> Backend:
-    raise ConfigError("backend.mode = 'aws' is not available in this build")
+    aws = settings.aws
+    if not aws.queue_url:
+        raise ConfigError("aws.queue_url is required when backend.mode is 'aws'")
+    try:
+        from .aws.cache import DynamoCache
+        from .aws.dynamo_store import DynamoStore
+        from .aws.ratelimit import DynamoRateLimiter
+        from .aws.sqs_queue import SqsJobQueue
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        raise ConfigError("backend.mode = 'aws' needs boto3: pip install 'hopwatch[aws]'") from exc
+
+    endpoint = aws.endpoint_url or None
+    return Backend(
+        store=DynamoStore(aws.table_prefix, aws.region, endpoint),
+        queue=SqsJobQueue(aws.queue_url, aws.region, endpoint, dlq_url=aws.dlq_url or None),
+        limiter=DynamoRateLimiter(
+            aws.table_prefix, aws.region, endpoint, min_interval=config.MIN_REQUEST_INTERVAL
+        ),
+        cache=DynamoCache(aws.table_prefix, aws.region, endpoint),
+    )
 
 
 def make_client(settings: Settings, backend: Backend) -> WizzClient:

@@ -57,3 +57,50 @@ def test_make_client_shares_limiter_cache_and_overrides(tmp_path) -> None:
         client.close()
     finally:
         backend.close()
+
+
+def test_aws_mode_requires_queue_url(tmp_path) -> None:
+    import pytest
+
+    from hopwatch.backend import ConfigError
+
+    settings = local_settings(tmp_path)
+    settings.backend.mode = "aws"
+    with pytest.raises(ConfigError, match="aws.queue_url"):
+        open_backend(settings)
+
+
+def test_unknown_mode_is_a_config_error(tmp_path) -> None:
+    import pytest
+
+    from hopwatch.backend import ConfigError
+
+    settings = local_settings(tmp_path)
+    settings.backend.mode = "cloud"
+    with pytest.raises(ConfigError, match="'local' or 'aws'"):
+        open_backend(settings)
+
+
+def test_open_backend_aws(tmp_path, aws) -> None:
+    from hopwatch.aws.cache import DynamoCache
+    from hopwatch.aws.dynamo_store import DynamoStore
+    from hopwatch.aws.ratelimit import DynamoRateLimiter
+    from hopwatch.aws.schema import create_tables
+    from hopwatch.aws.sqs_queue import SqsJobQueue
+
+    from .contract.conftest import PREFIX, REGION, create_sqs_pair
+
+    create_tables(PREFIX, REGION)
+    queue_url, dlq_url = create_sqs_pair("searches")
+    settings = local_settings(tmp_path)
+    settings.backend.mode = "aws"
+    settings.aws.table_prefix = PREFIX
+    settings.aws.region = REGION
+    settings.aws.queue_url = queue_url
+    settings.aws.dlq_url = dlq_url
+    backend = open_backend(settings)
+    assert isinstance(backend.store, DynamoStore)
+    assert isinstance(backend.queue, SqsJobQueue)
+    assert isinstance(backend.limiter, DynamoRateLimiter)
+    assert isinstance(backend.cache, DynamoCache)
+    backend.close()
