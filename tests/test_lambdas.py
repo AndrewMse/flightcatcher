@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 import boto3
@@ -35,8 +36,11 @@ def lambdas(aws, monkeypatch):
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(module, "network_loader", lambda client: lambda: RouteNetwork(build_map()))
     module._state.clear()
+    root = logging.getLogger()
+    saved = (root.handlers[:], root.level)
     yield module
     module._state.clear()
+    root.handlers[:], _ = saved[0], root.setLevel(saved[1])
 
 
 @pytest.fixture

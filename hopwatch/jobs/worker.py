@@ -22,6 +22,7 @@ from typing import Any, Callable, Literal
 
 from .. import config
 from ..client import WizzClient
+from ..logs import log_context
 from ..network import RouteNetwork
 from ..store import (
     JOB_DEAD,
@@ -31,7 +32,9 @@ from ..store import (
     RUN_ERROR,
     RUN_INCOMPLETE,
     RUN_OK,
+    Job,
     Store,
+    Want,
 )
 from ..sweep import PermanentJobError, sweep_want
 from .queue import JobQueue
@@ -111,7 +114,10 @@ class JobRunner:
         if key is None:
             log.warning("dropping malformed message: %r", body)
             return Outcome("ack", reason="malformed")
+        with log_context(job=key, attempt=receive_count, worker=self.worker_id):
+            return self._handle(key, receive_count)
 
+    def _handle(self, key: str, receive_count: int) -> Outcome:
         job = self.store.get_job(key)
         if job is None:
             log.warning("dropping message for unknown job %s", key)
@@ -128,7 +134,10 @@ class JobRunner:
         claimed = self.store.claim_job(key, self.worker_id, self.lease_s)
         if claimed is None:
             return self._deferred(key)
+        with log_context(want_id=want.id):
+            return self._run(key, want, claimed, receive_count)
 
+    def _run(self, key: str, want: Want, claimed: Job, receive_count: int) -> Outcome:
         run_id = self.store.start_search_run(want.id, key)
         requests, hits = self.client.stats.requests, self.client.stats.cache_hits
         try:

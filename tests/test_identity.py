@@ -18,3 +18,9 @@ def test_worker_command_is_wired() -> None:
     args = build_parser().parse_args(["worker", "--concurrency", "3"])
     assert args.concurrency == 3
     assert args.func.__name__ == "cmd_worker"
+
+
+def test_log_format_flag() -> None:
+    args = build_parser().parse_args(["--log-format", "json", "status"])
+    assert args.log_format == "json"
+    assert build_parser().parse_args(["status"]).log_format is None

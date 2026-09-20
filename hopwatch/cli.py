@@ -13,6 +13,8 @@ from pathlib import Path
 
 from . import config
 from .client import WizzClient, WizzError
+from .logs import configure as configure_logs
+from .migrate import env
 from .models import Itinerary
 from .network import RouteNetwork
 from .search import SearchOptions, search
@@ -380,6 +382,14 @@ def cmd_probe(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_log_settings(args: argparse.Namespace, settings) -> None:
+    """The config file's log format applies unless the command line said otherwise."""
+    if args.log_format or env("LOG_FORMAT"):
+        return
+    if settings.logging.format != "text":
+        configure_logs(settings.logging.format, logging.getLogger().level)
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from .service import run_service
     from .settings import Settings
@@ -393,6 +403,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     logging.getLogger("discord.client").setLevel(logging.ERROR)
 
     settings = Settings.load(Path(args.config).expanduser() if args.config else None)
+    _apply_log_settings(args, settings)
     if args.port:
         settings.web.port = args.port
     if args.host:
@@ -418,6 +429,7 @@ def cmd_worker(args: argparse.Namespace) -> int:
     if not args.verbose:
         logging.getLogger().setLevel(logging.INFO)
     settings = Settings.load(Path(args.config).expanduser() if args.config else None)
+    _apply_log_settings(args, settings)
     try:
         asyncio.run(run_workers(settings, args.concurrency))
     except KeyboardInterrupt:
@@ -486,6 +498,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Find Wizz Air itineraries bookable on Multipass, including self-transfers.",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--log-format", choices=["text", "json"], default=None,
+                        help="text for a terminal, json for log shipping "
+                             "(default: HOPWATCH_LOG_FORMAT or the config file)")
     parser.add_argument("--offline", action="store_true", help="use cached data only")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -580,9 +595,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.WARNING,
-        format="%(levelname)s %(name)s: %(message)s",
+    configure_logs(
+        args.log_format or env("LOG_FORMAT") or "text",
+        logging.DEBUG if args.verbose else logging.WARNING,
     )
 
     if isinstance(getattr(args, "date_from", None), str):

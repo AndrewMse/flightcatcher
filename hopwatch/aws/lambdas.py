@@ -18,6 +18,7 @@ from ..backend import Backend, make_client, open_backend
 from ..jobs.queue import Message
 from ..jobs.scheduler import enqueue_sweep, resend_stale
 from ..jobs.worker import JobRunner, network_loader
+from ..logs import configure
 from ..settings import Settings
 
 log = logging.getLogger(__name__)
@@ -32,7 +33,10 @@ _state: dict[str, Any] = {}
 
 def _settings() -> Settings:
     if "settings" not in _state:
-        _state["settings"] = Settings.from_env()
+        settings = Settings.from_env()
+        # Lambda installs its own plain handler; CloudWatch wants JSON lines.
+        configure(settings.logging.format if settings.logging.format != "text" else "json")
+        _state["settings"] = settings
     return _state["settings"]
 
 

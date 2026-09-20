@@ -26,6 +26,7 @@ from . import config
 from .booking import BookingAborted, BookingFlow, PaymentWallReached, PreparedBooking
 from .browser import BrowserSession, BrowserUnavailable, NotLoggedIn
 from .jobs.queue import JobQueue
+from .logs import log_context
 from .jobs.scheduler import enqueue_sweep, resend_stale
 from .multipass import CheckBudget, MultipassChecker, next_check_time
 from .notify import Notifier, NullNotifier, describe
@@ -283,6 +284,10 @@ class Watcher:
             summary=describe(candidate),
             detail={"legs": candidate.legs},
         )
+        with log_context(booking_id=booking_id, candidate_id=candidate.id):
+            await self._drive_booking(booking_id, candidate)
+
+    async def _drive_booking(self, booking_id: int, candidate: Candidate) -> None:
         prepared: PreparedBooking | None = None
         try:
             browser = await self.browser()
