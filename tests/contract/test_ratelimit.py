@@ -41,12 +41,14 @@ def gaps(stamps: list[float]) -> list[float]:
 def test_spacing_holds_across_threads(make_limiter) -> None:
     limiter = make_limiter()
     stamps: list[float] = []
+    slots: list[float] = []
     lock = threading.Lock()
 
     def hammer() -> None:
         for _ in range(4):
-            limiter.wait()
+            slot = limiter.wait()
             with lock:
+                slots.append(slot)
                 stamps.append(time.monotonic())
 
     threads = [threading.Thread(target=hammer) for _ in range(3)]
@@ -56,9 +58,9 @@ def test_spacing_holds_across_threads(make_limiter) -> None:
         t.join()
 
     assert len(stamps) == 12
-    # Wake-up jitter can shave a single gap, but never the overall rate:
-    # an unshared limiter would let the three threads run side by side.
-    assert min(gaps(stamps)) >= INTERVAL * 0.5
+    # The slots granted are exactly spaced; when each caller actually wakes is
+    # up to the OS, so wall-clock time is only checked as an overall rate.
+    assert min(gaps(slots)) >= INTERVAL * 0.99
     assert max(stamps) - min(stamps) >= INTERVAL * 11 * 0.9
 
 

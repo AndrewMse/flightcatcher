@@ -34,12 +34,14 @@ class DynamoRateLimiter:
     def close(self) -> None:
         return None
 
-    def wait(self) -> None:
+    def wait(self) -> float:
         if self.min_interval <= 0:
-            return
-        delay = self._reserve() - time.time()
+            return time.time()
+        slot = self._reserve()
+        delay = slot - time.time()
         if delay > 0:
             time.sleep(delay)
+        return slot
 
     def _reserve(self) -> float:
         while True:

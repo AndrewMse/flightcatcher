@@ -89,6 +89,11 @@ function renderStatus(data) {
   add("Checks left/hr", String(w.checks_remaining_this_hour ?? "?"));
   add("Open bookings", String(w.open_bookings ?? 0));
   if (w.last_search_at) add("Last sweep", clockTime(w.last_search_at));
+  if (w.pipeline) {
+    const p = w.pipeline;
+    add("Search queue", `${p.waiting} waiting · ${p.in_progress} running`);
+    if (p.dead) add("Dead-lettered", String(p.dead), "bad");
+  }
   if (w.passenger_configured === false) add("Passenger details", "unset", "warn");
   if (w.last_problem) add("Problem", String(w.last_problem).slice(0, 60), "bad");
 }

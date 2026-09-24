@@ -25,6 +25,7 @@ from typing import Any
 from . import config
 from .booking import BookingAborted, BookingFlow, PaymentWallReached, PreparedBooking
 from .browser import BrowserSession, BrowserUnavailable, NotLoggedIn
+from .health import AlertTracker, evaluate
 from .jobs.queue import JobQueue
 from .logs import log_context
 from .jobs.scheduler import enqueue_sweep, resend_stale
@@ -63,6 +64,7 @@ class Watcher:
         self.budget = CheckBudget(settings.watcher)
 
         self.queue = queue
+        self._alerts = AlertTracker()
         self._browser: BrowserSession | None = None
         self._browser_lock = asyncio.Lock()
         self._approvals: dict[int, asyncio.Future] = {}
@@ -507,9 +509,25 @@ class Watcher:
                         booking_id=stale.id,
                     )
                 self.store.prune_events(keep_days=30)
+                await self.health_pass(now)
             except Exception:  # noqa: BLE001
                 log.exception("maintenance pass failed")
             await asyncio.sleep(300)
+
+    async def health_pass(self, now: datetime) -> None:
+        """Say we are alive, then alert on pipeline signals that just started firing."""
+        self.store.beat("booker", now=now)
+        if self.queue is None:
+            return
+        signals = evaluate(
+            self.store, self.queue, now, self.settings.watcher.search_interval_min
+        )
+        started, recovered = self._alerts.update(signals)
+        for signal in started:
+            self.store.log("health", f"{signal.name}: {signal.detail}", level="error")
+            await self.notifier.problem(f"Pipeline: {signal.name}", signal.detail)
+        for signal in recovered:
+            self.store.log("health", f"{signal.name} has recovered", level="success")
 
     # --- status for the UI --------------------------------------------------
 
@@ -528,4 +546,17 @@ class Watcher:
             "open_bookings": self.store.count_open_bookings(),
             "last_problem": self.last_problem,
             "passenger_configured": self.settings.passenger.is_complete,
+            # Read by the auto-updater: restarting kills a held booking.
+            "safe_to_restart": self.store.count_open_bookings() == 0
+            and not self.awaiting_approval(),
+            "pipeline": self._pipeline(),
         }
+
+    def _pipeline(self) -> dict[str, int] | None:
+        if self.queue is None:
+            return None
+        try:
+            depth = self.queue.depth()
+        except Exception:  # noqa: BLE001 - status must render even if the queue is down
+            return None
+        return {"waiting": depth.visible, "in_progress": depth.in_flight, "dead": depth.dead}

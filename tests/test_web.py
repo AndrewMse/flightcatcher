@@ -290,3 +290,9 @@ def test_search_runs_endpoint(client) -> None:
     runs = client.get("/api/search-runs", params={"want_id": 5}).json()
     assert [(r["id"], r["upstream_calls"], r["cache_hits"]) for r in runs] == [(run_id, 12, 30)]
     assert client.get("/api/search-runs", params={"want_id": 6}).json() == []
+
+
+def test_health_endpoint(client) -> None:
+    signals = client.get("/api/health").json()["signals"]
+    assert {s["name"] for s in signals} == {"dead_letters", "queue_stalled", "job_failures"}
+    assert not any(s["firing"] for s in signals)

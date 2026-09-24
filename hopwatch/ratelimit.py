@@ -18,8 +18,8 @@ from .sqlite_util import connect
 
 
 class RateLimiter(Protocol):
-    def wait(self) -> None:
-        """Block until this caller may make one request."""
+    def wait(self) -> float:
+        """Block until this caller may make one request; return the slot granted."""
 
 
 class MemoryRateLimiter:
@@ -30,12 +30,13 @@ class MemoryRateLimiter:
         self._lock = threading.Lock()
         self._last = 0.0
 
-    def wait(self) -> None:
+    def wait(self) -> float:
         with self._lock:
             delta = time.monotonic() - self._last
             if delta < self._min_interval:
                 time.sleep(self._min_interval - delta)
             self._last = time.monotonic()
+            return self._last
 
 
 class SqliteRateLimiter:
@@ -55,13 +56,14 @@ class SqliteRateLimiter:
             "CREATE TABLE IF NOT EXISTS rate_limit (name TEXT PRIMARY KEY, next_slot REAL NOT NULL)"
         )
 
-    def wait(self) -> None:
+    def wait(self) -> float:
         if self.min_interval <= 0:
-            return
+            return time.time()
         slot = self._reserve()
         delay = slot - time.time()
         if delay > 0:
             time.sleep(delay)
+        return slot
 
     def _reserve(self) -> float:
         with self._lock:

@@ -221,8 +221,9 @@ def test_client_accepts_injected_cache_and_limiter(tmp_path) -> None:
     class Limiter:
         waits = 0
 
-        def wait(self) -> None:
+        def wait(self) -> float:
             Limiter.waits += 1
+            return 0.0
 
     class Cache:
         def __init__(self) -> None:

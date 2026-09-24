@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..client import WizzClient
+from ..health import evaluate
 from ..jobs.queue import JobQueue
 from ..jobs.scheduler import enqueue_manual
 from ..network import RouteNetwork
@@ -176,6 +177,15 @@ def create_app(
         if job is None:
             raise HTTPException(404, "No such job")
         return job.to_dict()
+
+    @app.get("/api/health")
+    async def health() -> dict[str, Any]:
+        if queue is None:
+            return {"signals": []}
+        signals = evaluate(
+            store, queue, datetime.now(UTC), settings.watcher.search_interval_min
+        )
+        return {"signals": [s.to_dict() for s in signals]}
 
     @app.get("/api/search-runs")
     async def search_runs(want_id: int | None = None, limit: int = 50) -> list[dict[str, Any]]:

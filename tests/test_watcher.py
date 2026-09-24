@@ -258,3 +258,55 @@ def test_schedule_once_expires_closed_candidates(store, settings, tmp_path) -> N
     watcher.schedule_once(now)
     assert store.list_candidates(status="watching") == []
     queue.close()
+
+
+# --- restart safety and health ----------------------------------------------
+
+
+def test_status_safe_to_restart_when_idle(watcher) -> None:
+    assert watcher.status()["safe_to_restart"] is True
+
+
+@pytest.mark.parametrize("status", ["preparing", "pending_approval", "approved", "booking"])
+def test_status_not_safe_to_restart_with_an_open_booking(store, watcher, status) -> None:
+    want_id = add_want(store)
+    now = datetime.now(UTC)
+    candidate_id, _ = store.upsert_candidate(
+        want_id=want_id, signature="s", path=["OTP", "EIN"], legs=[],
+        stops=0, total_minutes=168, ground_transfer=False, staggered_hours=0,
+        departs_utc=now + timedelta(hours=72),
+        window_opens_utc=now, window_closes_utc=now + timedelta(hours=40),
+    )
+    booking_id = store.create_booking(candidate_id, "OTP→EIN", {})
+    store.update_booking(booking_id, status=status)
+    assert watcher.status()["safe_to_restart"] is False
+
+
+def test_status_reports_pipeline_depth(store, settings, tmp_path) -> None:
+    queue = SqliteJobQueue(tmp_path / "watcher.db")
+    queue.send({"job": "search:1:1"})
+    status = Watcher(store, settings, queue=queue).status()
+    assert status["pipeline"] == {"waiting": 1, "in_progress": 0, "dead": 0}
+    queue.close()
+
+
+async def test_health_pass_alerts_once_and_beats(store, settings, tmp_path) -> None:
+    class Recorder:
+        def __init__(self) -> None:
+            self.problems: list[str] = []
+
+        async def problem(self, title: str, detail: str) -> None:
+            self.problems.append(title)
+
+    queue = SqliteJobQueue(tmp_path / "watcher.db", visibility_s=0, max_receives=1)
+    queue.send({"job": "poison"})
+    queue.receive()
+    queue.receive()  # second delivery over the limit: dead-lettered
+    notifier = Recorder()
+    watcher = Watcher(store, settings, notifier=notifier, queue=queue)
+
+    await watcher.health_pass(datetime.now(UTC))
+    await watcher.health_pass(datetime.now(UTC))
+    assert notifier.problems == ["Pipeline: dead_letters"]
+    assert "booker" in store.heartbeats()
+    queue.close()

@@ -11,8 +11,8 @@ from pathlib import Path
 from hopwatch.ratelimit import SqliteRateLimiter
 limiter = SqliteRateLimiter(Path(sys.argv[1]), float(sys.argv[2]))
 for _ in range(4):
-    limiter.wait()
-    print(time.time(), flush=True)
+    slot = limiter.wait()
+    print(slot, time.time(), flush=True)
 """
 
 
@@ -27,15 +27,20 @@ def test_spacing_holds_across_processes(tmp_path) -> None:
         )
         for _ in range(3)
     ]
+    slots: list[float] = []
     stamps: list[float] = []
     for proc in procs:
         out, _ = proc.communicate(timeout=30)
         assert proc.returncode == 0
-        stamps.extend(float(line) for line in out.split())
+        for line in out.splitlines():
+            slot, stamp = line.split()
+            slots.append(float(slot))
+            stamps.append(float(stamp))
 
+    slots.sort()
     stamps.sort()
-    assert len(stamps) == 12
-    # Process wake-up jitter can shave a single gap, never the overall rate.
-    assert min(b - a for a, b in zip(stamps, stamps[1:])) >= interval * 0.5
-    # And it really is a shared budget, not three independent ones.
+    assert len(slots) == 12
+    # The slots granted across processes are exactly spaced...
+    assert min(b - a for a, b in zip(slots, slots[1:])) >= interval * 0.99
+    # ...and it really is a shared budget, not three independent ones.
     assert stamps[-1] - stamps[0] >= interval * 11 * 0.9
