@@ -12,9 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import boto3
-from botocore.exceptions import ClientError
-
 
 @dataclass(frozen=True)
 class GsiSpec:
@@ -66,6 +63,10 @@ def table_name(prefix: str, name: str) -> str:
 
 def create_tables(prefix: str, region: str, endpoint_url: str | None = None) -> None:
     """Create every table if it does not exist yet. Safe to run repeatedly."""
+    # Imported here so the CDK app can read TABLES without boto3 installed.
+    import boto3
+    from botocore.exceptions import ClientError
+
     client = boto3.client("dynamodb", region_name=region, endpoint_url=endpoint_url)
     for spec in TABLES.values():
         name = table_name(prefix, spec.name)

@@ -18,3 +18,4 @@ session-cookies.json
 deploy/state/
 deploy/config/
 .DS_Store
+cdk.out/

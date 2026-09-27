@@ -25,6 +25,11 @@ discord = [
 aws = [
     "boto3>=1.34",
 ]
+# The CDK stacks in infra/.
+infra = [
+    "aws-cdk-lib>=2.160",
+    "constructs>=10.0",
+]
 # Everything needed to run `hopwatch serve`.
 service = [
     "hopwatch[browser,web,discord]",
