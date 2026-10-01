@@ -1,0 +1,10 @@
+[Unit]
+Description=Hopwatch — pull a new image and restart when no booking is in flight
+Documentation=https://github.com/AndrewMse/hopwatch
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=COMPOSE_DIR=/opt/hopwatch/deploy
+ExecStart=/opt/hopwatch/deploy/hopwatch-update.sh

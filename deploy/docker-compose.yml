@@ -1,5 +1,8 @@
 services:
   hopwatch:
+    # Published by CI on every push to main. `build` is the fallback for
+    # running a local change; hopwatch-update.sh keeps this image current.
+    image: ghcr.io/andrewmse/hopwatch:latest
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -8,7 +11,7 @@ services:
       # Keep the token in a .env file next to this compose file, not in here.
       HOPWATCH_DISCORD_TOKEN: ${HOPWATCH_DISCORD_TOKEN:-}
       HOPWATCH_DISCORD_CHANNEL: ${HOPWATCH_DISCORD_CHANNEL:-}
-      HOPWATCH_DB: /state/hopwatch.db
+      HOPWATCH_LOG_FORMAT: ${HOPWATCH_LOG_FORMAT:-json}
     volumes:
       - ./state:/state
       - ./config:/config

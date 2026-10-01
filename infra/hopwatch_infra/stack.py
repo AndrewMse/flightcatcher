@@ -82,6 +82,11 @@ class HopwatchStack(Stack):
             "HOPWATCH_QUEUE_URL": queue.queue_url,
             "HOPWATCH_DLQ_URL": dlq.queue_url,
             "HOPWATCH_LOG_FORMAT": "json",
+            # A worker's lease on a job must last as long as SQS hides the
+            # message, or a slow job could be taken over while still running.
+            "HOPWATCH_QUEUE_VISIBILITY_S": str(VISIBILITY_S),
+            "HOPWATCH_QUEUE_MAX_RECEIVES": str(MAX_RECEIVES),
+            "HOPWATCH_SEARCH_INTERVAL_MIN": str(SEARCH_INTERVAL_MIN),
         }
         code = lambda_.Code.from_asset(lambda_code_dir)
 

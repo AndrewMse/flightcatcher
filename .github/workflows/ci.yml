@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      # No browser download: the tests stop at the browser boundary, and AWS
+      # is moto all the way down. Nothing here touches the network.
+      - run: pip install -e '.[web,discord,aws,infra,dev]'
+      - run: pytest -q
+
+  infra:
+    name: Lambda bundle and CDK synth
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -e '.[aws,infra]'
+      - run: scripts/build_lambda.sh
+      - name: cdk synth (no AWS credentials needed)
+        working-directory: infra
+        run: npx -y aws-cdk@2 synth -q
+
+  image:
+    name: Publish image to GHCR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, infra]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/andrewmse/hopwatch:latest
+            ghcr.io/andrewmse/hopwatch:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

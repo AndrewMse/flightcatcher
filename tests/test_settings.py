@@ -201,3 +201,13 @@ def test_env_configures_the_backend(tmp_path, monkeypatch) -> None:
     assert settings.logging.format == "json"
     assert settings.wizz.backend_url == "http://fake"
     assert settings.workers.scheduler is False
+
+
+def test_env_configures_queue_timing_as_numbers(monkeypatch) -> None:
+    monkeypatch.setenv("HOPWATCH_QUEUE_VISIBILITY_S", "900")
+    monkeypatch.setenv("HOPWATCH_QUEUE_MAX_RECEIVES", "3")
+    monkeypatch.setenv("HOPWATCH_SEARCH_INTERVAL_MIN", "30")
+    settings = Settings.from_env()
+    assert settings.queue.visibility_s == 900
+    assert settings.queue.max_receives == 3
+    assert settings.watcher.search_interval_min == 30

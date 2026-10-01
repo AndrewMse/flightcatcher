@@ -63,6 +63,11 @@ def test_worker_lambda_shape(template) -> None:
             "HOPWATCH_BACKEND": "aws",
             "HOPWATCH_TABLE_PREFIX": "hopwatch",
             "HOPWATCH_LOG_FORMAT": "json",
+            # The job lease must match how long SQS hides a message, or a
+            # slow job is taken over while it is still running.
+            "HOPWATCH_QUEUE_VISIBILITY_S": "900",
+            "HOPWATCH_QUEUE_MAX_RECEIVES": "5",
+            "HOPWATCH_SEARCH_INTERVAL_MIN": "15",
         })},
     })
     template.has_resource_properties("AWS::Lambda::EventSourceMapping", {

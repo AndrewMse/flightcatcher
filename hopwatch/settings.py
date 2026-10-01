@@ -217,10 +217,15 @@ class Settings:
             ("LOG_FORMAT", self.logging, "format"),
             ("WIZZ_BACKEND", self.wizz, "backend_url"),
             ("WIZZ_HOMEPAGE", self.wizz, "homepage_url"),
+            ("QUEUE_VISIBILITY_S", self.queue, "visibility_s"),
+            ("QUEUE_MAX_RECEIVES", self.queue, "max_receives"),
+            ("SEARCH_INTERVAL_MIN", self.watcher, "search_interval_min"),
         ):
             value = env(name)
             if value:
-                setattr(section, attr, value)
+                # Keep the field's type: these arrive as strings.
+                current = getattr(section, attr)
+                setattr(section, attr, type(current)(value) if current is not None else value)
 
     def _expand_paths(self) -> None:
         self.database = Path(self.database).expanduser()

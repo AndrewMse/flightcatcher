@@ -1,0 +1,54 @@
+name: Deploy to AWS
+
+# Off until you opt in: the job only runs once the repository variable
+# AWS_DEPLOY_ROLE_ARN is set (see "Running on AWS" in the README). There are no
+# stored AWS keys; GitHub's OIDC token is exchanged for a short-lived role.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -e '.[aws,infra]'
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: scripts/build_lambda.sh
+      - name: cdk deploy
+        working-directory: infra
+        env:
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        run: |
+          args=(-c "region=$AWS_REGION")
+          if [ -n "$ALERT_EMAIL" ]; then args+=(-c "alert_email=$ALERT_EMAIL"); fi
+          npx -y aws-cdk@2 deploy HopwatchStack --require-approval never "${args[@]}"
