@@ -345,24 +345,35 @@ def scenario_aws(quick: bool) -> dict[str, Any]:
             queue = SqsJobQueue(aws["queue_url"], REGION, aws["endpoint"], dlq_url=aws["dlq_url"])
             env = aws_env(workdir, fake, aws, visibility_s=6)
 
-            # 1. One clean sweep, counting every AWS call the workers make.
-            pool = Workers(env, workdir, interval=0.05, counts=True)
-            since = datetime.now(UTC)
-            pool.spawn(2)
-            wait_ready(store, pool, since)
+            # 1. Two clean sweeps of the same wants, counting every AWS call the
+            #    workers make. The first finds every itinerary for the first
+            #    time; the second is the steady state, refreshing ones it knows.
             want_ids = seed_wants(store, pairs, first_day(), 6)
-            fake.reset()
-            started = time.time()
-            keys = enqueue(store, queue, want_ids, "count")
-            if not wait_for(lambda: finished(store, keys), timeout=900, poll=0.5):
-                raise RuntimeError("aws sweep did not finish")
-            wall = sweep_wall_seconds(store, keys, started)
-            wizz_calls = fake.stats()["total"]
-            pool.stop()
-            counted = _sum_counts(workdir)
-            runs = [r for r in store.list_search_runs(limit=1000) if r.job_key in keys]
-            cpu_s = sum((r.duration_ms or 0) for r in runs) / 1000
-            log_bytes = pool.log_bytes()
+            sweeps = {}
+            for label in ("first", "steady"):
+                sweep_dir = workdir / label
+                pool = Workers(env, sweep_dir, interval=0.05, counts=True)
+                since = datetime.now(UTC)
+                pool.spawn(2)
+                wait_ready(store, pool, since)
+                fake.reset()
+                started = time.time()
+                keys = enqueue(store, queue, want_ids, label)
+                if not wait_for(lambda: finished(store, keys), timeout=900, poll=0.5):
+                    raise RuntimeError(f"aws {label} sweep did not finish")
+                wall = sweep_wall_seconds(store, keys, started)
+                wizz_calls = fake.stats()["total"]
+                pool.stop()
+                runs = [r for r in store.list_search_runs(limit=1000) if r.job_key in keys]
+                sweeps[label] = {
+                    "jobs": len(keys),
+                    "wall_s_emulated": round(wall, 2),
+                    "wizz_calls": wizz_calls,
+                    "worker_cpu_s": round(sum((r.duration_ms or 0) for r in runs) / 1000, 2),
+                    "log_bytes": pool.log_bytes(),
+                    **_sum_counts(sweep_dir),
+                }
+                print(f"  aws: {label} sweep {sweeps[label]}", flush=True)
 
             # 2. Chaos on the AWS backend: same guarantees as locally?
             pool = Workers(env, workdir, interval=0.05)
@@ -376,23 +387,27 @@ def scenario_aws(quick: bool) -> dict[str, Any]:
         stop_moto()
         fake.stop()
 
-    calls = counted["calls"]
-    jobs = len(keys)
-    # Per sweep on AWS. The planner's share is added by hand: it is one
-    # PutItem and one SendMessage per job, plus a few small reads.
+    first, steady = sweeps["first"], sweeps["steady"]
+    jobs = steady["jobs"]
+    # A sweep every 15 minutes finds the 15-minute timetable cache expired, so
+    # it makes the first sweep's calls to Wizz, but it mostly refreshes
+    # candidates it already knows, so its writes are the steady sweep's.
+    # The planner's share is added by hand: one PutItem and one SendMessage
+    # per job, plus a few small reads.
+    calls = steady["calls"]
     sqs = jobs + calls.get("sqs:DeleteMessage", 0) + calls.get("sqs:ChangeMessageVisibility", 0)
-    dynamo_writes = counted["dynamo_write_units"] + jobs
-    dynamo_reads = counted["dynamo_read_units"] + 4
+    dynamo_writes = steady["dynamo_write_units"] + jobs
+    dynamo_reads = steady["dynamo_read_units"] + 4
     projections = {}
     for concurrency in (1, 2):
         # On Lambda a worker waiting on the shared 1.5 s limit is billed for the
         # wait, so duration follows the politeness limit, not the CPU work.
-        worker_seconds = wizz_calls * REAL_INTERVAL_S * concurrency + cpu_s
+        worker_seconds = first["wizz_calls"] * REAL_INTERVAL_S * concurrency + first["worker_cpu_s"]
         per_sweep = UsageCounts(
             jobs=jobs, sqs_requests=int(sqs), dynamo_reads=dynamo_reads,
             dynamo_writes=dynamo_writes, worker_seconds=worker_seconds,
             # Worker log lines, plus Lambda's own START/END/REPORT per invocation.
-            log_bytes=log_bytes + 400 * (jobs + 1),
+            log_bytes=steady["log_bytes"] + 400 * (jobs + 1),
         )
         projections[f"concurrency_{concurrency}"] = {
             "per_sweep": per_sweep.__dict__,
@@ -402,13 +417,13 @@ def scenario_aws(quick: bool) -> dict[str, Any]:
     result = {
         "params": {"wants": wants, "sweeps_per_month": SWEEPS_PER_MONTH,
                    "projected_interval_s": REAL_INTERVAL_S},
-        "sweep": {"jobs": jobs, "wall_s_emulated": round(wall, 2), "wizz_calls": wizz_calls,
-                  "worker_cpu_s": round(cpu_s, 2), "aws_calls": calls,
-                  "dynamo_read_units": dynamo_reads, "dynamo_write_units": dynamo_writes},
+        "sweeps": sweeps,
+        "per_sweep_estimate": {"wizz_calls": first["wizz_calls"],
+                               "dynamo_read_units": dynamo_reads,
+                               "dynamo_write_units": dynamo_writes, "sqs_requests": sqs},
         "chaos": chaos_result,
         "monthly_cost": projections,
     }
-    print(f"  aws: sweep {result['sweep']}", flush=True)
     print(f"  aws: chaos {chaos_result}", flush=True)
     return result
 
@@ -482,9 +497,12 @@ def markdown(results: dict[str, Any]) -> str:
         out += [
             "## AWS backend (SQS + DynamoDB on moto)",
             "",
-            f"One cold sweep of {a['params']['wants']} wants: {a['sweep']['wizz_calls']} calls to "
-            f"Wizz, {_fmt(a['sweep']['dynamo_write_units'])} DynamoDB write units, "
-            f"{_fmt(a['sweep']['dynamo_read_units'])} read units.",
+            f"A sweep of {a['params']['wants']} wants, as every 15 minutes: "
+            f"{a['per_sweep_estimate']['wizz_calls']} calls to Wizz (the timetable cache has "
+            f"expired), {_fmt(a['per_sweep_estimate']['dynamo_write_units'])} DynamoDB write "
+            f"units and {_fmt(a['per_sweep_estimate']['dynamo_read_units'])} read units (most "
+            f"candidates already known), {a['per_sweep_estimate']['sqs_requests']} SQS requests. "
+            f"The very first sweep writes {_fmt(a['sweeps']['first']['dynamo_write_units'])} units.",
             "",
             f"Chaos: {c['kills']} kills ({c['kills_mid_job']} mid-job) over {c['jobs']} jobs — "
             f"{c['jobs_lost']} lost, {c['jobs_completed_twice']} completed twice, "

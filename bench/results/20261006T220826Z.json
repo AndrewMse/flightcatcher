@@ -1,0 +1,298 @@
+{
+  "started": "2026-10-06T22:03:54.876492+00:00",
+  "quick": false,
+  "politeness": {
+    "params": {
+      "wants": 12,
+      "interval_s": 0.2,
+      "limit_per_s": 5.0,
+      "fake_latency_ms": 80,
+      "days_per_want": 7
+    },
+    "rows": [
+      {
+        "mode": "shared",
+        "workers": 1,
+        "wall_s": 21.69,
+        "wizz_calls": 109,
+        "peak_requests_per_s": 6,
+        "mean_requests_per_s": 5.02
+      },
+      {
+        "mode": "shared",
+        "workers": 2,
+        "wall_s": 22.12,
+        "wizz_calls": 111,
+        "peak_requests_per_s": 6,
+        "mean_requests_per_s": 5.02
+      },
+      {
+        "mode": "shared",
+        "workers": 4,
+        "wall_s": 22.71,
+        "wizz_calls": 114,
+        "peak_requests_per_s": 6,
+        "mean_requests_per_s": 5.02
+      },
+      {
+        "mode": "shared",
+        "workers": 8,
+        "wall_s": 23.28,
+        "wizz_calls": 117,
+        "peak_requests_per_s": 6,
+        "mean_requests_per_s": 5.03
+      },
+      {
+        "mode": "naive",
+        "workers": 1,
+        "wall_s": 22.06,
+        "wizz_calls": 109,
+        "peak_requests_per_s": 5,
+        "mean_requests_per_s": 4.94
+      },
+      {
+        "mode": "naive",
+        "workers": 2,
+        "wall_s": 11.79,
+        "wizz_calls": 114,
+        "peak_requests_per_s": 10,
+        "mean_requests_per_s": 9.67
+      },
+      {
+        "mode": "naive",
+        "workers": 4,
+        "wall_s": 7.12,
+        "wizz_calls": 118,
+        "peak_requests_per_s": 20,
+        "mean_requests_per_s": 16.58
+      },
+      {
+        "mode": "naive",
+        "workers": 8,
+        "wall_s": 4.38,
+        "wizz_calls": 126,
+        "peak_requests_per_s": 40,
+        "mean_requests_per_s": 28.78
+      }
+    ],
+    "took_s": 145.8
+  },
+  "scaling": {
+    "params": {
+      "wants": 40,
+      "jobs": 200,
+      "days_per_want": 14
+    },
+    "rows": [
+      {
+        "workers": 1,
+        "wall_s": 1.57,
+        "jobs_per_s": 127.69,
+        "wizz_calls": 0,
+        "speedup": 1.0
+      },
+      {
+        "workers": 2,
+        "wall_s": 1.41,
+        "jobs_per_s": 141.57,
+        "wizz_calls": 0,
+        "speedup": 1.11
+      },
+      {
+        "workers": 4,
+        "wall_s": 1.35,
+        "jobs_per_s": 148.67,
+        "wizz_calls": 0,
+        "speedup": 1.16
+      },
+      {
+        "workers": 8,
+        "wall_s": 1.49,
+        "jobs_per_s": 134.0,
+        "wizz_calls": 0,
+        "speedup": 1.05
+      }
+    ],
+    "took_s": 29.0
+  },
+  "recovery": {
+    "rounds": 3,
+    "jobs": 36,
+    "kills": 51,
+    "kills_mid_job": 24,
+    "jobs_done": 36,
+    "jobs_dead_lettered": 0,
+    "jobs_lost": 0,
+    "jobs_completed_twice": 0,
+    "recovery_s": {
+      "p50": 4.21762,
+      "p95": 7.809518700000001,
+      "max": 7.971843
+    },
+    "candidates": 965,
+    "candidates_missing": 0,
+    "candidates_extra": 0,
+    "params": {
+      "workers": 4,
+      "lease_s": 4,
+      "kill_every_s": 0.6,
+      "wants_per_round": 12
+    },
+    "took_s": 52.1
+  },
+  "aws": {
+    "params": {
+      "wants": 10,
+      "sweeps_per_month": 2880,
+      "projected_interval_s": 1.5
+    },
+    "sweeps": {
+      "first": {
+        "jobs": 10,
+        "wall_s_emulated": 6.04,
+        "wizz_calls": 97,
+        "worker_cpu_s": 11.29,
+        "log_bytes": 18261,
+        "calls": {
+          "dynamodb:UpdateItem": 460,
+          "sqs:ReceiveMessage": 12,
+          "dynamodb:GetItem": 540,
+          "dynamodb:PutItem": 118,
+          "dynamodb:TransactWriteItems": 283,
+          "sqs:DeleteMessage": 10
+        },
+        "dynamo_read_units": 270.0,
+        "dynamo_write_units": 719.0
+      },
+      "steady": {
+        "jobs": 10,
+        "wall_s_emulated": 1.55,
+        "wizz_calls": 0,
+        "worker_cpu_s": 2.7,
+        "log_bytes": 550,
+        "calls": {
+          "dynamodb:UpdateItem": 608,
+          "sqs:ReceiveMessage": 12,
+          "dynamodb:GetItem": 410,
+          "dynamodb:PutItem": 10,
+          "sqs:DeleteMessage": 10
+        },
+        "dynamo_read_units": 205.0,
+        "dynamo_write_units": 658.0
+      }
+    },
+    "per_sweep_estimate": {
+      "wizz_calls": 97,
+      "dynamo_read_units": 209.0,
+      "dynamo_write_units": 668.0,
+      "sqs_requests": 20
+    },
+    "chaos": {
+      "rounds": 2,
+      "jobs": 20,
+      "kills": 28,
+      "kills_mid_job": 11,
+      "jobs_done": 20,
+      "jobs_dead_lettered": 0,
+      "jobs_lost": 0,
+      "jobs_completed_twice": 0,
+      "recovery_s": {
+        "p50": 6.609203,
+        "p95": 15.2786145,
+        "max": 17.295898
+      }
+    },
+    "monthly_cost": {
+      "concurrency_1": {
+        "per_sweep": {
+          "jobs": 10,
+          "sqs_requests": 20,
+          "dynamo_reads": 209.0,
+          "dynamo_writes": 668.0,
+          "worker_seconds": 156.79,
+          "log_bytes": 4950
+        },
+        "list_price": {
+          "lambda_requests": 0.006336,
+          "lambda_compute": 1.51479157392,
+          "sqs": 0.28224,
+          "dynamodb": 1.5587208000000001,
+          "logs": 0.008364468812942505,
+          "monitoring": 0.8,
+          "usage": {
+            "lambda_requests": 31680,
+            "lambda_gb_seconds": 113608.79999999999,
+            "sqs_requests": 705600,
+            "dynamodb_read_units": 601920.0,
+            "dynamodb_write_units": 1923840.0,
+            "logs_gb": 0.013276934623718262
+          },
+          "total": 4.170452842732942
+        },
+        "with_free_tier": {
+          "lambda_requests": 0.0,
+          "lambda_compute": 0.0,
+          "sqs": 0.0,
+          "dynamodb": 1.5587208000000001,
+          "logs": 0.0,
+          "monitoring": 0.0,
+          "usage": {
+            "lambda_requests": 31680,
+            "lambda_gb_seconds": 113608.79999999999,
+            "sqs_requests": 705600,
+            "dynamodb_read_units": 601920.0,
+            "dynamodb_write_units": 1923840.0,
+            "logs_gb": 0.013276934623718262
+          },
+          "total": 1.5587208000000001
+        }
+      },
+      "concurrency_2": {
+        "per_sweep": {
+          "jobs": 10,
+          "sqs_requests": 20,
+          "dynamo_reads": 209.0,
+          "dynamo_writes": 668.0,
+          "worker_seconds": 302.29,
+          "log_bytes": 4950
+        },
+        "list_price": {
+          "lambda_requests": 0.006336,
+          "lambda_compute": 2.91159855792,
+          "sqs": 0.28224,
+          "dynamodb": 1.5587208000000001,
+          "logs": 0.008364468812942505,
+          "monitoring": 0.8,
+          "usage": {
+            "lambda_requests": 31680,
+            "lambda_gb_seconds": 218368.80000000002,
+            "sqs_requests": 705600,
+            "dynamodb_read_units": 601920.0,
+            "dynamodb_write_units": 1923840.0,
+            "logs_gb": 0.013276934623718262
+          },
+          "total": 5.5672598267329425
+        },
+        "with_free_tier": {
+          "lambda_requests": 0.0,
+          "lambda_compute": 0.0,
+          "sqs": 0.0,
+          "dynamodb": 1.5587208000000001,
+          "logs": 0.0,
+          "monitoring": 0.0,
+          "usage": {
+            "lambda_requests": 31680,
+            "lambda_gb_seconds": 218368.80000000002,
+            "sqs_requests": 705600,
+            "dynamodb_read_units": 601920.0,
+            "dynamodb_write_units": 1923840.0,
+            "logs_gb": 0.013276934623718262
+          },
+          "total": 1.5587208000000001
+        }
+      }
+    },
+    "took_s": 45.2
+  },
+  "finished": "2026-10-06T22:08:26.888363+00:00"
+}
