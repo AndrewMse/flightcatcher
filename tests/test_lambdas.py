@@ -89,7 +89,13 @@ def sqs_event(queue_url: str) -> dict:
     }
 
 
-def test_planner_enqueues_once_per_slot(lambdas, sweeps) -> None:
+def test_planner_enqueues_once_per_slot(lambdas, sweeps, monkeypatch) -> None:
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 9, 12, 0, 5, tzinfo=UTC)
+
+    monkeypatch.setattr(lambdas, "datetime", Frozen)  # both calls in one 15-min slot
     store = lambdas.backend().store
     add_want(store)
     first = lambdas.planner_handler({}, None)

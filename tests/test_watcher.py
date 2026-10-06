@@ -235,7 +235,9 @@ def test_schedule_once_queues_one_sweep_per_want_per_slot(store, settings, tmp_p
     watcher = Watcher(store, settings, queue=queue)
     add_want(store, name="a")
     add_want(store, name="b", active=0)
-    now = datetime.now(UTC)
+    # A fixed time a few seconds into a 15-minute slot: the wall clock can sit
+    # 30 s before a boundary, and then "+30 s" is legitimately a new slot.
+    now = datetime(2026, 9, 9, 12, 0, 5, tzinfo=UTC)
 
     assert watcher.schedule_once(now) == 1
     assert watcher.last_search_at == now
@@ -309,4 +311,31 @@ async def test_health_pass_alerts_once_and_beats(store, settings, tmp_path) -> N
     await watcher.health_pass(datetime.now(UTC))
     assert notifier.problems == ["Pipeline: dead_letters"]
     assert "booker" in store.heartbeats()
+    queue.close()
+
+
+def test_status_does_not_poll_the_queue_on_every_call(store, settings) -> None:
+    """The web UI asks for status every 3 s per tab; on AWS each depth is two SQS calls."""
+    from hopwatch.jobs.queue import QueueDepth
+
+    class CountingQueue:
+        calls = 0
+
+        def depth(self) -> QueueDepth:
+            CountingQueue.calls += 1
+            return QueueDepth(visible=2, in_flight=1, dead=0)
+
+    watcher = Watcher(store, settings, queue=CountingQueue())
+    for _ in range(5):
+        assert watcher.status()["pipeline"] == {"waiting": 2, "in_progress": 1, "dead": 0}
+    assert CountingQueue.calls == 1
+
+
+def test_schedule_once_starts_a_new_job_in_the_next_slot(store, settings, tmp_path) -> None:
+    queue = SqliteJobQueue(tmp_path / "watcher.db")
+    watcher = Watcher(store, settings, queue=queue)
+    add_want(store)
+    just_before = datetime(2026, 9, 9, 12, 14, 50, tzinfo=UTC)
+    assert watcher.schedule_once(just_before) == 1
+    assert watcher.schedule_once(just_before + timedelta(seconds=30)) == 1
     queue.close()

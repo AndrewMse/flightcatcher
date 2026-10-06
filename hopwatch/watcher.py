@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -49,6 +50,8 @@ from .store import (
 log = logging.getLogger(__name__)
 UTC = timezone.utc
 
+PIPELINE_TTL_S = 30.0
+
 
 class Watcher:
     def __init__(
@@ -65,6 +68,7 @@ class Watcher:
 
         self.queue = queue
         self._alerts = AlertTracker()
+        self._pipeline_cache: tuple[float, dict[str, int]] | None = None
         self._browser: BrowserSession | None = None
         self._browser_lock = asyncio.Lock()
         self._approvals: dict[int, asyncio.Future] = {}
@@ -532,6 +536,7 @@ class Watcher:
     # --- status for the UI --------------------------------------------------
 
     def status(self) -> dict[str, Any]:
+        open_bookings = self.store.count_open_bookings()
         return {
             "running": self._running,
             "session_ok": self.session_ok,
@@ -543,20 +548,29 @@ class Watcher:
             else None,
             "checks_remaining_this_hour": self.budget.remaining,
             "awaiting_approval": self.awaiting_approval(),
-            "open_bookings": self.store.count_open_bookings(),
+            "open_bookings": open_bookings,
             "last_problem": self.last_problem,
             "passenger_configured": self.settings.passenger.is_complete,
             # Read by the auto-updater: restarting kills a held booking.
-            "safe_to_restart": self.store.count_open_bookings() == 0
-            and not self.awaiting_approval(),
+            "safe_to_restart": open_bookings == 0 and not self.awaiting_approval(),
             "pipeline": self._pipeline(),
         }
 
     def _pipeline(self) -> dict[str, int] | None:
+        """Queue depth for the status strip, at most one lookup per 30 s.
+
+        The web UI asks for status every few seconds per open tab. On AWS a
+        depth is two SQS calls, made from the event loop that also handles
+        approvals, so it is looked up rarely and remembered.
+        """
         if self.queue is None:
             return None
+        if self._pipeline_cache and time.monotonic() - self._pipeline_cache[0] < PIPELINE_TTL_S:
+            return self._pipeline_cache[1]
         try:
             depth = self.queue.depth()
         except Exception:  # noqa: BLE001 - status must render even if the queue is down
             return None
-        return {"waiting": depth.visible, "in_progress": depth.in_flight, "dead": depth.dead}
+        snapshot = {"waiting": depth.visible, "in_progress": depth.in_flight, "dead": depth.dead}
+        self._pipeline_cache = (time.monotonic(), snapshot)
+        return snapshot

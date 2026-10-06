@@ -242,7 +242,14 @@ def test_search_now_enqueues_a_job(client) -> None:
     assert job["want_id"] == want_id
 
 
-def test_search_now_twice_is_one_job(client) -> None:
+def test_search_now_twice_is_one_job(client, monkeypatch) -> None:
+    # Pin the clock: two clicks either side of a minute boundary are rightly
+    # two jobs, and the wall clock occasionally puts them there.
+    import hopwatch.web.app as web_app
+
+    real = web_app.enqueue_manual
+    fixed = datetime(2026, 9, 9, 12, 0, 5, tzinfo=UTC)
+    monkeypatch.setattr(web_app, "enqueue_manual", lambda store, queue, want_id, now: real(store, queue, want_id, fixed))
     want_id = client.post("/api/wants", json=WANT).json()["id"]
     first = client.post(f"/api/wants/{want_id}/search").json()
     second = client.post(f"/api/wants/{want_id}/search").json()

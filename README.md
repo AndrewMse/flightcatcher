@@ -520,7 +520,7 @@ so move it by hand before switching units: stop `flightcatcher`, move
 .venv/bin/pytest
 ```
 
-343 tests, with no network, no browser and no AWS account:
+347 tests, with no network, no browser and no AWS account:
 
 - the route map is a synthetic fixture and HTTP goes through a mock transport;
 - **contract tests** run one suite against both implementations of the store,
